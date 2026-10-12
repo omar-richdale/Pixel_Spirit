@@ -1,0 +1,1082 @@
+<title>Old Light Observatory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Concept: a phosphor radar observatory. Each memory is a point of light; distance from the
+   centre is how long ago it happened. The sweep plays the memories as notes. Single dark world,
+   with the green/amber phosphor switch from phosphor.py. */
+:root {
+  --bg: #040906;
+  --bg-raise: #08130b;
+  --phos: #74f08e;
+  --phos-dim: #2c7442;
+  --fg: #cfe9d4;
+  --muted: #84a48b;
+  --line: rgba(116, 240, 142, 0.2);
+  --glow: rgba(116, 240, 142, 0.38);
+  --danger: #ff6b5a;
+  --display: "VT323", "IBM Plex Mono", ui-monospace, monospace;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --panel-w: min(480px, 42vw);
+  color-scheme: dark;
+}
+:root[data-phosphor="amber"] {
+  --bg: #0a0704;
+  --bg-raise: #140e07;
+  --phos: #ffb84d;
+  --phos-dim: #855a1f;
+  --fg: #f2e2c9;
+  --muted: #b29b7b;
+  --line: rgba(255, 184, 77, 0.22);
+  --glow: rgba(255, 184, 77, 0.38);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body);
+  font-size: 16px; line-height: 1.6; overflow: hidden; -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--phos); outline-offset: 3px; }
+
+/* CRT glass */
+.glass {
+  position: fixed; inset: 0; pointer-events: none; z-index: 90;
+  background:
+    radial-gradient(ellipse at 50% 50%, transparent 58%, rgba(0,0,0,.6) 100%),
+    repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.24) 2px 3px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .glass::after { content: ""; position: absolute; inset: 0; background: var(--phos); opacity: .012; animation: flick 4s steps(2) infinite; }
+  @keyframes flick { 50% { opacity: .026; } }
+}
+
+#app { position: fixed; inset: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+#sky { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: manipulation; }
+#sky.hot { cursor: pointer; }
+
+/* HUD */
+.hud { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 18px); left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; pointer-events: none; z-index: 5; }
+.brand { font-family: var(--display); font-size: 34px; line-height: .9; color: var(--phos); text-shadow: 0 0 16px var(--glow); }
+.brand small { display: block; font: 12px/1.6 var(--mono); color: var(--muted); letter-spacing: .08em; text-shadow: none; margin-top: 6px; }
+.boot { font: 12px/1.6 var(--mono); color: var(--muted); text-align: right; white-space: pre; min-height: 6em; }
+.boot b { color: var(--phos); font-weight: 500; }
+.hint { position: absolute; left: 20px; bottom: 96px; max-width: 34ch; font: 13px/1.55 var(--mono); color: var(--muted); z-index: 5; pointer-events: none; transition: opacity .6s; }
+.hint b { color: var(--phos); font-weight: 500; }
+
+/* bottom bar */
+.bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; align-items: center; gap: 16px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(6px); }
+.tl { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tl::-webkit-scrollbar { display: none; }
+.tl ol { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; }
+.tl button { background: transparent; border: 1px solid transparent; padding: 8px 10px; cursor: pointer; white-space: nowrap; font: 12px/1 var(--mono); letter-spacing: .04em; color: var(--muted); display: grid; gap: 5px; text-align: left; }
+.tl button span { font-family: var(--display); font-size: 20px; color: var(--fg); letter-spacing: 0; }
+.tl button:hover span, .tl button[aria-current="true"] span { color: var(--phos); }
+.tl button[aria-current="true"] { border-color: var(--line); background: var(--bg-raise); }
+.ctl { display: flex; gap: 8px; flex-shrink: 0; }
+.sw { display: inline-flex; border: 1px solid var(--line); }
+.sw button, .sbtn { background: transparent; border: 0; padding: 9px 11px; cursor: pointer; font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.sbtn { border: 1px solid var(--line); display: inline-flex; gap: 8px; align-items: center; }
+.sw button[aria-pressed="true"], .sbtn[aria-pressed="true"] { background: var(--phos); color: var(--bg); }
+.sbtn i { width: 14px; height: 10px; display: inline-flex; gap: 2px; align-items: flex-end; }
+.sbtn i em { flex: 1; background: currentColor; height: 30%; }
+@media (prefers-reduced-motion: no-preference) {
+  .sbtn[aria-pressed="true"] i em { animation: eq .9s ease-in-out infinite alternate; }
+  .sbtn i em:nth-child(2) { animation-delay: -.3s !important; }
+  .sbtn i em:nth-child(3) { animation-delay: -.6s !important; }
+  @keyframes eq { from { height: 20%; } to { height: 100%; } }
+}
+
+/* panel */
+.panel { position: absolute; top: 0; right: 0; bottom: var(--bar-h, 80px); width: var(--panel-w); z-index: 8; background: color-mix(in srgb, var(--bg) 94%, transparent); border-left: 1px solid var(--line); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
+.panel[hidden] { display: none !important; }
+@media (prefers-reduced-motion: no-preference) {
+  .panel.in { animation: pin .5s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes pin { 0% { transform: scaleY(.006); filter: brightness(3); } 40% { transform: scaleY(.006); } 100% { transform: none; filter: none; } }
+}
+.p-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--line); font: 12px/1.4 var(--mono); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.p-head .nav { display: flex; gap: 4px; }
+.p-head button { background: transparent; border: 1px solid var(--line); color: var(--fg); width: 34px; height: 30px; cursor: pointer; font: 16px/1 var(--mono); }
+.p-head button:hover { color: var(--bg); background: var(--phos); }
+.p-body { flex: 1; overflow-y: auto; padding: 26px 24px 40px; display: grid; gap: 18px; align-content: start; overscroll-behavior: contain; }
+.p-body h2 { font-family: var(--display); font-weight: 400; font-size: clamp(46px, 5vw, 64px); line-height: .9; color: var(--phos); margin: 0; text-shadow: 0 0 16px var(--glow); text-wrap: balance; }
+.p-body p { margin: 0; max-width: 60ch; }
+.p-body .lede { font-size: 17.5px; }
+.muted { color: var(--muted); }
+.cap { font: 12.5px/1.55 var(--mono); color: var(--muted); }
+.w { border: 1px solid var(--line); background: var(--bg-raise); padding: 16px; display: grid; gap: 12px; }
+.act { justify-self: start; background: var(--phos); color: var(--bg); border: 0; padding: 12px 16px; cursor: pointer; font: 500 13px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; display: inline-flex; gap: 10px; align-items: center; }
+.act small { font-size: 11px; opacity: .7; text-transform: none; letter-spacing: 0; }
+.act:hover { box-shadow: 0 0 0 4px var(--line); }
+.act:active { transform: translateY(1px); }
+.act:disabled { opacity: .45; cursor: default; box-shadow: none; }
+.act.ghost { background: transparent; color: var(--phos); border: 1px solid var(--phos-dim); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tags span { font: 12px/1 var(--mono); padding: 7px 9px; border: 1px solid var(--line); }
+
+/* widgets */
+.gcv { width: 100%; aspect-ratio: 1.25; display: block; touch-action: none; cursor: grab; }
+.gcv:active { cursor: grabbing; }
+.pitch { width: 100%; height: auto; display: block; }
+.pitch .ln { fill: none; stroke: var(--phos-dim); stroke-width: 1; }
+.pitch .pl { fill: var(--bg); stroke: var(--phos); stroke-width: 1.5; }
+.pitch text { font-family: var(--mono); font-size: 10px; fill: var(--fg); text-anchor: middle; }
+.pitch .ball { fill: var(--phos); }
+.pitch .net { stroke: var(--phos-dim); stroke-width: .8; }
+.score { font-family: var(--display); font-size: 26px; color: var(--phos); }
+.menu { display: grid; gap: 2px; font-family: var(--display); font-size: 34px; line-height: 1.15; }
+.menu .q { font-size: 18px; color: var(--muted); margin-bottom: 6px; }
+.opt { all: unset; cursor: pointer; display: flex; gap: .5ch; color: var(--muted); padding: 0 .2ch; }
+.opt::before { content: ">"; width: 1ch; color: var(--phos); visibility: hidden; }
+.opt.on { color: var(--phos); text-shadow: 0 0 12px var(--glow); }
+.opt.on::before { visibility: visible; }
+.opt.picked { background: var(--phos); color: var(--bg); text-shadow: none; }
+.opt.picked::before { color: var(--bg); }
+.opt:focus-visible { outline: 1px dashed var(--phos); }
+.rank { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: center; }
+.big { font-family: var(--display); font-size: 92px; line-height: .8; color: var(--phos); text-shadow: 0 0 22px var(--glow); font-variant-numeric: tabular-nums; min-width: 3.2ch; }
+.cells { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+.cells i { aspect-ratio: 1; background: var(--line); transition: background .25s, box-shadow .25s; }
+.cells i.lit { background: var(--phos-dim); }
+.cells i.top { background: var(--phos); box-shadow: 0 0 10px var(--glow); }
+.subs { display: grid; gap: 12px; }
+.subs p { font-family: var(--display); font-size: 27px; line-height: 1.1; opacity: .12; transition: opacity .6s; }
+.subs p.on { opacity: 1; }
+.subs b { color: var(--phos); font-weight: 400; }
+.ship { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.ship button { all: unset; cursor: pointer; background: var(--bg); padding: 14px; display: grid; gap: 4px; position: relative; overflow: hidden; }
+.ship button b { font-family: var(--display); font-size: 26px; font-weight: 400; color: var(--phos); line-height: 1; }
+.ship button span { font-size: 13.5px; color: var(--muted); }
+.ship button::after { content: "SHIPPED"; position: absolute; right: 8px; top: 10px; font: 500 11px/1 var(--mono); letter-spacing: .12em; color: var(--bg); background: var(--phos); padding: 5px 6px; transform: rotate(-6deg) scale(1.6); opacity: 0; transition: transform .25s cubic-bezier(.2,1.6,.4,1), opacity .15s; }
+.ship button.done::after { opacity: 1; transform: rotate(-6deg) scale(1); }
+.ship button:focus-visible { outline: 1px dashed var(--phos); outline-offset: -4px; }
+.bars { display: grid; gap: 8px; }
+.bars .lab { display: flex; justify-content: space-between; font: 13px/1.3 var(--mono); font-variant-numeric: tabular-nums; }
+.track { height: 20px; position: relative; }
+.track i { position: absolute; inset: 0 auto 0 0; width: 100%; background: repeating-linear-gradient(90deg, var(--phos) 0 6px, transparent 6px 8px); }
+.track.ref i { background: repeating-linear-gradient(90deg, var(--phos-dim) 0 6px, transparent 6px 8px); }
+.ring { width: 100%; max-width: 300px; height: auto; display: block; margin-inline: auto; }
+.ring circle.srv { fill: var(--bg); stroke: var(--phos-dim); stroke-width: 1.5; cursor: pointer; transition: fill .2s; }
+.ring circle.srv.up { fill: var(--phos); stroke: var(--phos); }
+.ring line { stroke: var(--phos); stroke-width: 1; opacity: 0; transition: opacity .4s; }
+.ring line.up { opacity: .55; }
+.ring text { font-family: var(--display); font-size: 22px; fill: var(--phos); text-anchor: middle; }
+.court { display: grid; gap: 8px; }
+.court p { font: 13.5px/1.5 var(--mono); opacity: .15; transition: opacity .5s; }
+.court p.on { opacity: 1; }
+.court b { color: var(--phos); font-weight: 500; }
+.stamp { justify-self: start; font: 500 11px/1 var(--mono); letter-spacing: .12em; color: var(--bg); background: var(--muted); padding: 6px 8px; }
+.hx { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; font: 12px/1.4 var(--mono); }
+.hx div { border: 1px solid var(--line); padding: 8px; min-width: 0; }
+.hx b { display: block; color: var(--phos); font-weight: 500; }
+.hx .w3 { grid-column: 1 / -1; text-align: center; }
+.pipe { width: 100%; height: auto; display: block; }
+.pipe rect { fill: var(--bg); stroke: var(--phos-dim); }
+.pipe rect.lit { stroke: var(--phos); }
+.pipe path { fill: none; stroke: var(--phos-dim); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.pipe text { font-family: var(--display); font-size: 19px; fill: var(--phos); }
+.pipe text.s { font-family: var(--mono); font-size: 9.5px; fill: var(--muted); }
+.pipe .pk { fill: var(--phos); }
+.card { width: 100%; height: auto; display: block; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line); }
+.juke { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.juke button { all: unset; cursor: pointer; background: var(--bg); padding: 11px 12px; display: grid; gap: 2px; }
+.juke button b { font-family: var(--display); font-size: 22px; font-weight: 400; line-height: 1; color: var(--fg); }
+.juke button span { font: 11.5px/1.3 var(--mono); color: var(--muted); }
+.juke button:hover b, .juke button.playing b { color: var(--phos); }
+.juke button.playing { background: var(--bg-raise); }
+.juke button:focus-visible { outline: 1px dashed var(--phos); outline-offset: -4px; }
+.status { font-family: var(--display); font-size: 58px; line-height: .9; color: var(--phos); text-shadow: 0 0 20px var(--glow); }
+.status i { display: inline-block; width: .45em; height: .75em; background: var(--phos); vertical-align: -.04em; margin-left: .1em; }
+@media (prefers-reduced-motion: no-preference) { .status i { animation: blink 1s steps(1) infinite; } @keyframes blink { 50% { opacity: 0; } } }
+
+/* gate */
+.gate { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 24px 16px; overflow-y: auto; background: color-mix(in srgb, var(--bg) 93%, transparent); }
+.gate .in { width: 100%; max-width: 980px; display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: clamp(24px, 4vw, 56px); align-items: center; }
+.gate figure { margin: 0; background: #000; padding: 10px; border: 1px solid var(--line); box-shadow: 0 0 70px -12px var(--glow); }
+.gate figure img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+.gate h1 { font-family: var(--display); font-weight: 400; font-size: clamp(64px, 9vw, 112px); line-height: .85; color: var(--phos); margin: 0; text-shadow: 0 0 24px var(--glow); }
+.gate p { margin: 18px 0 0; max-width: 40ch; }
+.gate .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+.gate .power { font: 500 14px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; background: var(--phos); color: var(--bg); border: 0; padding: 16px 20px; cursor: pointer; display: inline-flex; gap: 12px; align-items: center; white-space: nowrap; }
+.gate .power::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bg) 40%, transparent); }
+.gate .power:hover { box-shadow: 0 0 0 5px var(--line), 0 0 30px var(--glow); }
+.gate .quiet { font: 500 13px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 15px 16px; cursor: pointer; }
+.gate .note { font: 12px/1.5 var(--mono); color: var(--muted); margin-top: 16px; }
+@media (prefers-reduced-motion: no-preference) {
+  .gate figure img { animation: pon 1.4s .2s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes pon { 0%, 30% { transform: scale(1, .005); filter: brightness(4); } 60% { transform: scale(1, 1.02); filter: brightness(1.5); } 100% { transform: none; filter: none; } }
+  .gate.off { animation: goff .6s cubic-bezier(.6,0,.4,1) forwards; }
+  @keyframes goff { 40% { transform: scale(1, .004); filter: brightness(4); } 70% { transform: scale(.002, .004); opacity: 1; } 100% { transform: scale(0); opacity: 0; } }
+}
+
+/* frozen PC */
+.freeze { position: fixed; inset: 0; z-index: 85; display: grid; place-items: center; background: rgba(0,0,0,.55); }
+.freeze[hidden] { display: none !important; }
+.freeze .box { width: min(440px, calc(100% - 32px)); background: var(--bg); border: 2px solid var(--phos); padding: 20px; font: 14px/1.5 var(--mono); display: grid; gap: 12px; }
+.freeze .box b { font-family: var(--display); font-size: 30px; font-weight: 400; color: var(--phos); line-height: 1; }
+.freeze .prog { height: 14px; border: 1px solid var(--phos-dim); }
+.freeze .prog i { display: block; height: 100%; width: 0; background: var(--phos); }
+@media (prefers-reduced-motion: no-preference) {
+  body.glitch #app { animation: jit .09s steps(2) infinite; }
+  @keyframes jit { 0% { transform: translate(3px, -2px); filter: hue-rotate(40deg) contrast(1.6); } 50% { transform: translate(-4px, 2px); filter: invert(1); } 100% { transform: translate(1px, 3px); } }
+}
+
+@media (max-width: 860px) {
+  :root { --panel-w: 100%; }
+  .panel { top: auto; height: min(calc(74% - var(--bar-h, 80px)), 600px); border-left: 0; border-top: 1px solid var(--phos-dim); }
+  .gate .in { grid-template-columns: minmax(0, 1fr); }
+  .gate figure { order: -1; }
+  .hint { bottom: 92px; }
+  .boot { display: none; }
+}
+@media (max-width: 520px) {
+  .sw button { padding: 9px 8px; }
+  .sbtn b { display: none; }
+  .bar { gap: 10px; padding-inline: 12px; }
+  .rank { grid-template-columns: minmax(0, 1fr); }
+  .hx { grid-template-columns: minmax(0, 1fr); }
+  .juke { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+
+<div class="glass" aria-hidden="true"></div>
+
+<div id="app">
+  <canvas id="sky" aria-hidden="true"></canvas>
+  <div class="hud">
+    <div class="brand">OLD LIGHT<small>OMAR, AGADIR, MOROCCO</small></div>
+    <div class="boot" id="boot" aria-hidden="true"></div>
+  </div>
+  <p class="hint" id="hint">Every point of light is a memory. The further out, the longer ago it happened. <b>Click one</b> to receive it, or use the reels below.</p>
+
+  <aside class="panel" id="panel" hidden aria-label="Memory">
+    <div class="p-head">
+      <span id="pMeta">Signal</span>
+      <div class="nav">
+        <button type="button" id="pPrev" aria-label="Previous memory">&lsaquo;</button>
+        <button type="button" id="pNext" aria-label="Next memory">&rsaquo;</button>
+        <button type="button" id="pClose" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div class="p-body" id="pBody"></div>
+  </aside>
+
+  <div class="bar">
+    <nav class="tl" aria-label="Memories in order"><ol id="tl"></ol></nav>
+    <div class="ctl">
+      <button type="button" class="sbtn" id="snd" aria-pressed="false"><i aria-hidden="true"><em></em><em></em><em></em></i><b>Sound</b></button>
+      <div class="sw" role="group" aria-label="Phosphor color">
+        <button type="button" id="phG" data-ph="green" aria-pressed="true">P1</button>
+        <button type="button" id="phA" data-ph="amber" aria-pressed="false">P3</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="gate" id="gate" role="dialog" aria-label="Power on">
+  <div class="in">
+    <figure><img id="gateCard" src="card_green.webp" width="1280" height="720" alt="Green phosphor terminal ID card: Operator License MA-AGA-0001. Omar Oumessaoud, alias The Harmonica, class Agent Builder, origin Agadir, Morocco. Clearance Top 2% TryHackMe, talent Ships in 4 days, status Active."></figure>
+    <div>
+      <h1>Old light</h1>
+      <p>Light from a distant star shows you the star's past. This is my past, set out as a sky: high-school physics, a 100 MB trap, a striker's number, a fork in the road, and the agents I build now.</p>
+      <div class="row">
+        <button type="button" class="power" id="powerOn">Power on</button>
+        <button type="button" class="quiet" id="powerQuiet">Enter silently</button>
+      </div>
+      <p class="note">Power on starts ambient sound. Headphones help. Everything you touch plays.</p>
+    </div>
+  </div>
+</div>
+
+<div class="freeze" id="freeze" hidden role="alertdialog" aria-label="Computer frozen">
+  <div class="box" id="freezeBox"></div>
+</div>
+
+<script>
+(function () {
+"use strict";
+var $ = function (s, r) { return (r || document).querySelector(s); };
+var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+var root = document.documentElement;
+
+/* =====================================================================
+   SOUND ENGINE (Web Audio, everything synthesized, all original)
+   ===================================================================== */
+var S = { ctx: null, on: false, amb: null };
+function N(s) {
+  var m = /^([A-G])(#|b)?(-?\d)$/.exec(s);
+  var semi = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0);
+  return 440 * Math.pow(2, (semi + (+m[3] + 1) * 12 - 69) / 12);
+}
+function live() { return S.on && S.ctx && S.ctx.state === "running"; }
+function now() { return S.ctx.currentTime; }
+function initAudio() {
+  if (S.ctx) return true;
+  var C = window.AudioContext || window.webkitAudioContext;
+  if (!C) return false;
+  var ctx = S.ctx = new C();
+  S.master = ctx.createGain(); S.master.gain.value = 0;
+  var comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = .005; comp.release.value = .2;
+  S.master.connect(comp); comp.connect(ctx.destination);
+  S.fx = ctx.createGain(); S.fx.gain.value = .9; S.fx.connect(S.master);
+  S.verb = ctx.createConvolver(); S.verb.buffer = impulse(3.4);
+  var wet = ctx.createGain(); wet.gain.value = .55; S.verb.connect(wet); wet.connect(S.master);
+  S.amb = ctx.createGain(); S.amb.gain.value = 0; S.amb.connect(S.master);
+  var ambWet = ctx.createGain(); ambWet.gain.value = .25; S.amb.connect(ambWet); ambWet.connect(S.verb);
+  var len = ctx.sampleRate * 2, nb = ctx.createBuffer(1, len, ctx.sampleRate), d = nb.getChannelData(0);
+  for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  S.noise = nb;
+  S.curve = (function () { var n = 1024, c = new Float32Array(n), k = 60; for (var i = 0; i < n; i++) { var x = i * 2 / n - 1; c[i] = (1 + k) * x / (1 + k * Math.abs(x)); } return c; })();
+  return true;
+}
+function impulse(sec) {
+  var ctx = S.ctx, r = ctx.sampleRate, len = Math.floor(r * sec), b = ctx.createBuffer(2, len, r);
+  for (var c = 0; c < 2; c++) { var d = b.getChannelData(c); for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.8); }
+  return b;
+}
+function send(node, wet) {
+  node.connect(S.fx);
+  if (wet) { var g = S.ctx.createGain(); g.gain.value = wet; node.connect(g); g.connect(S.verb); }
+}
+function env(g, t, a, peak, dur) {
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(peak, t + a);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+}
+function osc(type, f, t, dur, vol, o) {
+  o = o || {};
+  var ctx = S.ctx, x = ctx.createOscillator(), g = ctx.createGain(), n = x;
+  x.type = type; x.frequency.setValueAtTime(f, t);
+  if (o.glide) x.frequency.exponentialRampToValueAtTime(o.glide, t + (o.glideT || dur));
+  if (o.detune) x.detune.value = o.detune;
+  if (o.filter) { var fl = ctx.createBiquadFilter(); fl.type = o.filter; fl.frequency.setValueAtTime(o.ff, t); fl.Q.value = o.q || 1; if (o.ffTo) fl.frequency.exponentialRampToValueAtTime(o.ffTo, t + (o.ffT || dur)); x.connect(fl); n = fl; }
+  n.connect(g); env(g, t, o.a || .005, vol, dur);
+  send(g, o.wet === undefined ? .2 : o.wet);
+  x.start(t); x.stop(t + dur + .05);
+  return x;
+}
+function noise(t, dur, vol, type, ff, q, o) {
+  o = o || {};
+  var ctx = S.ctx, src = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), g = ctx.createGain();
+  src.buffer = S.noise; src.loop = true;
+  fl.type = type; fl.frequency.setValueAtTime(ff, t); fl.Q.value = q || 1;
+  if (o.ffTo) fl.frequency.exponentialRampToValueAtTime(o.ffTo, t + dur);
+  src.connect(fl); fl.connect(g); env(g, t, o.a || .002, vol, dur);
+  send(g, o.wet || 0);
+  src.start(t, Math.random()); src.stop(t + dur + .05);
+}
+/* instruments */
+var I = {
+  tick: function (v) { if (!live()) return; noise(now(), .025, v || .05, "highpass", 5200, .7); },
+  blip: function (f, v, t) { if (!live()) return; osc("square", f, t || now(), .11, v || .05, { filter: "lowpass", ff: 2400, wet: .15 }); },
+  bell: function (f, v, t) { if (!live()) return; t = t || now(); osc("sine", f, t, 2.6, v || .05, { a: .004, wet: .7 }); osc("sine", f * 2.01, t, 1.4, (v || .05) * .35, { a: .004, wet: .7 }); },
+  reed: function (f, t, dur, v) {
+    if (!live()) return; t = t || now(); dur = dur || .9; v = v || .1;
+    var ctx = S.ctx, g = ctx.createGain(), bp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = 1500; bp.Q.value = .7; lp.type = "lowpass"; lp.frequency.value = 3200;
+    var lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 5.4; lg.gain.value = f * .012; lfo.connect(lg);
+    ["sawtooth", "square"].forEach(function (ty, i) {
+      var x = ctx.createOscillator(); x.type = ty;
+      x.frequency.setValueAtTime(f * .955, t); x.frequency.exponentialRampToValueAtTime(f, t + .09);
+      x.detune.value = i ? 6 : -6; lg.connect(x.frequency);
+      var xg = ctx.createGain(); xg.gain.value = i ? .35 : .65; x.connect(xg); xg.connect(bp);
+      x.start(t); x.stop(t + dur + .3);
+    });
+    lfo.start(t + .15); lfo.stop(t + dur + .3);
+    bp.connect(lp); lp.connect(g);
+    g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(v, t + .07); g.gain.setValueAtTime(v * .85, t + dur * .7); g.gain.exponentialRampToValueAtTime(.0001, t + dur + .25);
+    send(g, .55);
+  },
+  pluck: function (f, t, dur, v, bright) {
+    if (!live()) return; t = t || now(); dur = dur || 1.2; v = v || .14;
+    osc("sawtooth", f, t, dur, v, { filter: "lowpass", ff: bright || 3400, ffTo: 380, ffT: .35, wet: .3 });
+    osc("triangle", f, t, dur * .8, v * .6, { wet: .2, detune: 4 });
+  },
+  dist: function (f, t, dur, v) {
+    if (!live()) return; t = t || now(); v = v || .08;
+    var ctx = S.ctx, ws = ctx.createWaveShaper(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+    ws.curve = S.curve; lp.type = "lowpass"; lp.frequency.value = 2300;
+    [-9, 9].forEach(function (dt) { var x = ctx.createOscillator(); x.type = "sawtooth"; x.frequency.value = f; x.detune.value = dt; x.connect(ws); x.start(t); x.stop(t + dur + .05); });
+    ws.connect(lp); lp.connect(g); env(g, t, .004, v, dur); send(g, .18);
+  },
+  brass: function (f, t, dur, v) {
+    if (!live()) return; t = t || now(); v = v || .09;
+    var ctx = S.ctx, x = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+    x.type = "sawtooth"; x.frequency.setValueAtTime(f * .97, t); x.frequency.exponentialRampToValueAtTime(f, t + .06);
+    lp.type = "lowpass"; lp.Q.value = 2; lp.frequency.setValueAtTime(350, t); lp.frequency.exponentialRampToValueAtTime(2000, t + .07); lp.frequency.exponentialRampToValueAtTime(1100, t + dur);
+    x.connect(lp); lp.connect(g); g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(v, t + .05); g.gain.exponentialRampToValueAtTime(.0001, t + dur + .1);
+    send(g, .4); x.start(t); x.stop(t + dur + .15);
+  },
+  pad: function (fs, t, dur, v) { if (!live()) return; t = t || now(); fs.forEach(function (f) { osc("triangle", f, t, dur, (v || .05) / fs.length * 2, { a: .25, wet: .5, filter: "lowpass", ff: 1600 }); }); },
+  kick: function (t, v) { if (!live()) return; osc("sine", 140, t || now(), .28, v || .35, { glide: 42, glideT: .2, wet: 0 }); },
+  hat: function (t, v) { if (!live()) return; noise(t || now(), .05, v || .04, "highpass", 7500, .8); },
+  snare: function (t, v) { if (!live()) return; t = t || now(); noise(t, .16, v || .12, "bandpass", 1900, .8, { wet: .2 }); osc("triangle", 190, t, .1, (v || .12) * .7, { wet: 0 }); },
+  crowd: function (dur) { if (!live()) return; var t = now(); dur = dur || 2; noise(t, dur, .14, "bandpass", 900, .6, { a: .25, wet: .5 }); noise(t + .1, dur * .8, .07, "bandpass", 2200, 1.2, { a: .3, wet: .5 }); },
+  clank: function () { if (!live()) return; var t = now(); [1180, 1870, 2630].forEach(function (f, i) { osc("sine", f, t, .9 - i * .2, .06, { a: .001, wet: .4 }); }); },
+  sweep: function (from, to, dur, v) { if (!live()) return; osc("sawtooth", from, now(), dur, v || .06, { glide: to, filter: "lowpass", ff: 1400, ffTo: 200, wet: .3, a: .02 }); }
+};
+/* ambient bed: drone, desert wind, mains hum, and an occasional harmonica-like reed */
+function startAmbient() {
+  if (S.ambOn) return; S.ambOn = true;
+  var ctx = S.ctx, t = now();
+  var lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 360; lp.Q.value = .6;
+  var lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = .045; lg.gain.value = 150; lfo.connect(lg); lg.connect(lp.frequency); lfo.start();
+  [["A1", "sawtooth", -7, .05], ["A1", "sawtooth", 7, .05], ["E2", "triangle", 0, .045], ["A2", "sine", 3, .035], ["C3", "sine", -4, .012]].forEach(function (v) {
+    var x = ctx.createOscillator(), g = ctx.createGain(); x.type = v[1]; x.frequency.value = N(v[0]); x.detune.value = v[2]; g.gain.value = v[3]; x.connect(g); g.connect(lp); x.start();
+  });
+  lp.connect(S.amb);
+  var src = ctx.createBufferSource(); src.buffer = S.noise; src.loop = true;
+  var bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 650; bp.Q.value = 1.1;
+  var wl = ctx.createOscillator(), wg = ctx.createGain(); wl.frequency.value = .06; wg.gain.value = 380; wl.connect(wg); wg.connect(bp.frequency); wl.start();
+  var wv = ctx.createGain(); wv.gain.value = .03;
+  var al = ctx.createOscillator(), ag = ctx.createGain(); al.frequency.value = .09; ag.gain.value = .022; al.connect(ag); ag.connect(wv.gain); al.start();
+  src.connect(bp); bp.connect(wv); wv.connect(S.amb); src.start();
+  var hum = ctx.createOscillator(), hg = ctx.createGain(); hum.frequency.value = 50; hg.gain.value = .006; hum.connect(hg); hg.connect(S.amb); hum.start();
+  S.amb.gain.setValueAtTime(0, t); S.amb.gain.linearRampToValueAtTime(1, t + 3.5);
+  (function wander() {
+    setTimeout(function () {
+      if (live() && !S.busy) {
+        var sc = ["E4", "G4", "A4", "C5", "D5", "E5", "G5"], k = 1 + Math.floor(Math.random() * 3), tt = now() + .05;
+        var i = Math.floor(Math.random() * sc.length);
+        for (var j = 0; j < k; j++) { i = Math.max(0, Math.min(sc.length - 1, i + (Math.random() < .5 ? -1 : 1))); I.reed(N(sc[i]), tt, .9 + Math.random() * .9, .055); tt += .75 + Math.random() * .6; }
+      }
+      wander();
+    }, 11000 + Math.random() * 10000);
+  })();
+}
+function duck(on) { if (S.ctx && S.amb) S.amb.gain.setTargetAtTime(on ? .22 : 1, now(), .25); }
+function setSound(on) {
+  if (on && !initAudio()) return;
+  S.on = on;
+  var b = $("#snd"); b.setAttribute("aria-pressed", String(on)); b.querySelector("b").textContent = on ? "Sound on" : "Sound off";
+  if (!S.ctx) return;
+  if (on) { S.ctx.resume().then(function () { startAmbient(); S.master.gain.setTargetAtTime(.85, now(), .3); }); }
+  else S.master.gain.setTargetAtTime(0, now(), .12);
+}
+
+/* =====================================================================
+   PHOSPHOR (P1 green / P3 amber), shared with phosphor.py's two modes
+   ===================================================================== */
+var col = {};
+function hexRgb(h) { h = h.trim(); if (h[0] === "#") { var n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; } return [116, 240, 142]; }
+function readCols() { var cs = getComputedStyle(root); ["phos", "phos-dim", "fg", "bg", "muted"].forEach(function (k) { col[k] = hexRgb(cs.getPropertyValue("--" + k)); }); }
+function rgba(c, a) { return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")"; }
+function setPh(ph, quiet) {
+  if (ph === "amber") root.setAttribute("data-phosphor", "amber"); else root.removeAttribute("data-phosphor");
+  $$(".sw button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.ph === ph)); });
+  $$("img[data-card], #gateCard").forEach(function (im) { im.src = "card_" + ph + ".webp"; im.alt = im.alt.replace(/^(Green|Amber)/, ph === "amber" ? "Amber" : "Green"); });
+  readCols();
+  try { localStorage.setItem("phosphor", ph); } catch (e) {}
+  if (!quiet) { I.sweep(ph === "amber" ? 900 : 300, ph === "amber" ? 300 : 900, .25, .04); I.tick(.08); }
+}
+$$(".sw button").forEach(function (b) { b.addEventListener("click", function () { setPh(b.dataset.ph); }); });
+try { if (localStorage.getItem("phosphor") === "amber") setPh("amber", true); } catch (e) {}
+readCols();
+
+/* =====================================================================
+   THE MEMORIES
+   yrs = roughly how long ago, which sets the distance from the centre
+   ===================================================================== */
+var PENTA = ["A3", "C4", "D4", "E4", "G4", "A4", "C5", "D5"];
+var M = [
+{ k: "light", short: "Old light", yrs: 7.2, ang: -2.55, note: "A3",
+  html: '<h2 data-dec>Old light</h2>' +
+  '<p class="lede" data-dec>In high school I loved physics far past the curriculum. I knew how fission and fusion work before we studied them.</p>' +
+  '<p>Cosmos with Neil deGrasse Tyson, Veritasium and Vsauce were my evenings. Heisenberg\'s uncertainty, Marie Curie\'s discoveries, and the idea that the light from a distant star is the star\'s past. I kept bringing all of it to class until my teacher found it a little strange.</p>' +
+  '<div class="w"><canvas class="gcv" aria-label="Interactive: drag the heavy mass on a bent grid; a small ball orbits it." role="img"></canvas><p class="cap">How I pictured gravity at sixteen: a heavy thing on a couch cushion and a small ball circling it. Drag the mass. The ball\'s speed is its pitch.</p></div>' +
+  '<p class="muted">I was never great at exams. I was very good at being curious.</p>',
+  mount: mountGravity },
+{ k: "installer", short: "The trap", yrs: 6.6, ang: 2.2, note: "C4",
+  html: '<h2 data-dec>The 100 MB trap</h2>' +
+  '<p class="lede" data-dec>I wanted to play GTA 5 on a PC with no graphics card. A stranger offered a 100 MB installer.</p>' +
+  '<div class="w"><button type="button" class="act" data-run>Run GTA5_Setup.exe <small>100 MB</small></button><p class="cap" data-out>Do what I did. See what happens.</p></div>' +
+  '<p>It froze my computer for good. I was furious. I used my mom\'s phone to figure out what had happened and taught myself to format a PC. Someone had gotten into my machine and I wanted to know how.</p>' +
+  '<p>So I installed Kali Linux, cracked my own Wi-Fi, poked at WPS, and wrote my first Python. Then a family member explained how a packet leaves my phone, crosses the internet and comes back. I never forgot that conversation.</p>' +
+  '<div class="tags"><span>Kali Linux</span><span>WPS</span><span>Python</span><span>Networking</span></div>',
+  mount: mountInstaller },
+{ k: "nine", short: "Number nine", yrs: 6.0, ang: .55, note: "D4",
+  html: '<h2 data-dec>Number nine</h2>' +
+  '<p class="lede" data-dec>Long hair, a headband, the number 9. I played striker and tried to shoot like Diego Forlán.</p>' +
+  '<div class="w"><svg class="pitch" viewBox="0 0 320 170" role="img" aria-label="A small pitch: Saad passes to Youssef, Youssef assists Omar, Omar shoots."><rect class="ln" x="4" y="4" width="312" height="162"/><line class="ln" x1="160" y1="4" x2="160" y2="166"/><circle class="ln" cx="160" cy="85" r="26"/><rect class="ln" x="262" y="45" width="54" height="80"/><g class="net"><line x1="316" y1="65" x2="316" y2="105"/><line x1="312" y1="65" x2="312" y2="105"/><line x1="308" y1="65" x2="308" y2="105"/></g><line class="ln" x1="304" y1="65" x2="316" y2="65"/><line class="ln" x1="304" y1="105" x2="316" y2="105"/>' +
+  '<circle class="pl" cx="62" cy="96" r="11"/><text x="62" y="99">S</text><text x="62" y="122">Saad</text>' +
+  '<circle class="pl" cx="170" cy="40" r="11"/><text x="170" y="43">Y</text><text x="170" y="66">Youssef</text>' +
+  '<circle class="pl" cx="238" cy="104" r="11"/><text x="238" y="107">9</text><text x="238" y="130">Omar</text>' +
+  '<rect class="pl" data-keeper x="300" y="78" width="5" height="16"/>' +
+  '<circle class="ball" data-ball cx="74" cy="96" r="4"/></svg>' +
+  '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><button type="button" class="act" data-shoot>Take the shot</button><span class="score" data-score>0 goals</span></div></div>' +
+  '<p>Our school team was tight. Most of my goals came off passes from my best friend Youssef, while Saad, also my best friend, held the defense. We built Pro Evolution Soccer teams from zero coins and played phone tournaments against other schools, after a long run of PUBG Mobile.</p>' +
+  '<p class="muted">When The Queen\'s Gambit came out I got Saad hooked on chess and we played through my gap year. Friends from that time are friends for good. Three hundred years from now it would still feel like we met yesterday.</p>',
+  mount: mountPitch },
+{ k: "fork", short: "The fork", yrs: 4.6, ang: -.6, note: "E4",
+  html: '<h2 data-dec>The fork</h2>' +
+  '<p class="lede" data-dec>I took a year off after high school because I did not know what to study, or where. I spent it gaming and learning IT on my own, and walked into university ahead.</p>' +
+  '<p>After a first year of networking, security, cloud, systems and programming, I had to choose one. Your turn.</p>' +
+  '<div class="w"><div class="menu" role="group" aria-label="Choose a specialization"><div class="q">SELECT SPECIALIZATION:</div><button type="button" class="opt on" data-i="0">Networking</button><button type="button" class="opt" data-i="1">Cybersecurity</button><button type="button" class="opt" data-i="2">Cloud Computing</button></div><p class="cap" data-out>Arrow keys or click.</p></div>' +
+  '<p>Networking pulled hard. It was my first love in IT. But something older said cybersecurity: the Kali nights, the Wi-Fi experiments, Mr. Robot. It is one of the best decisions I have made. The kid who did not know if he could study what he wanted would be proud of it.</p>',
+  mount: mountFork },
+{ k: "rank", short: "Top 2%", yrs: 3.4, ang: 1.25, note: "G4",
+  html: '<h2 data-dec>Small class, sharp edges</h2>' +
+  '<p class="lede" data-dec>Twenty of us, competing the way that makes everyone better. I rooted machine after machine and wrote the reports.</p>' +
+  '<div class="w"><div class="rank"><span class="big" data-pct>100%</span><div class="cells" data-cells aria-hidden="true"></div></div><p class="cap">My global rank on TryHackMe. Fifty cells, one lit: the top 2%, drawn to scale.</p><button type="button" class="act ghost" data-again>Climb again</button></div>' +
+  '<div class="tags"><span>Pentesting</span><span>ISO 27001</span><span>NIST</span><span>Incident response</span><span>Digital forensics</span><span>CTFs with my team</span><span>Coursera</span></div>' +
+  '<p>Incident response and digital forensics became the thing I wanted to do for a career. I finished the internship, went home and kept grinding.</p>' +
+  '<p class="muted">Then came the bachelor year and the AI boom. I switched to Big Data and AI and promised myself I would not leave security behind. It was a hard year. I finished with a good grade.</p>',
+  mount: mountRank },
+{ k: "duel", short: "The duel", yrs: 1.9, ang: -2.0, note: "A4",
+  html: '<h2 data-dec>The duel</h2>' +
+  '<p class="lede" data-dec>I was home looking at master\'s programs and doing CTFs for fun when my old school emailed: a company was hiring. I said I would be there, waited hours, and walked in.</p>' +
+  '<div class="w"><div class="subs" data-subs><p>My TryHackMe picture was Clint Eastwood, from The Good, the Bad and the Ugly.</p><p><b>The boss:</b> "Do you know the song?"</p><p><b>Me:</b> "Ennio Morricone."</p><p>He had lived most of his life in the US. He loved spaghetti westerns too.</p></div></div>' +
+  '<p>He told me I was accepted, as long as I passed the project like everyone else. I had four days. Click each one off:</p>' +
+  '<div class="ship" data-ship><button type="button"><b>Model</b><span>Small BERT for phishing detection</span></button><button type="button"><b>Frontend</b><span>Hosted on Vercel</span></button><button type="button"><b>Backend</b><span>Hosted on Railway, wired to the frontend</span></button><button type="button"><b>Report</b><span>Written, sent, presented</span></button></div>' +
+  '<p class="muted" data-after>Started the next Monday. One month as an intern, then hired.</p>',
+  mount: mountDuel },
+{ k: "year", short: "Year one", yrs: 1.1, ang: .75, note: "C5",
+  html: '<h2 data-dec>Year one</h2>' +
+  '<p class="lede" data-dec>A year into my first job, this is what I have built. Most of it I did not imagine I could do.</p>' +
+  '<p>I trained a model from scratch on network traffic labeled by app category, so it learns how each kind of app behaves. It ships small and pretrained inside our Android VPN app, then keeps learning from the user\'s own traffic, on the device. Their data never reaches our servers.</p>' +
+  '<div class="w"><div class="bars"><div class="lab"><span>Stock TensorFlow</span><span>200+ MB</span></div><div class="track ref"><i></i></div><div class="lab"><span>Added to the app</span><span data-mb>200+ MB</span></div><div class="track"><i data-bar></i></div></div><button type="button" class="act" data-compile>Compile from source</button><p class="cap">I compiled TensorFlow with only the ops the model uses: about 2 MB, drawn to scale. Then I did it again for Windows.</p></div>' +
+  '<div class="w"><svg class="ring" viewBox="0 0 240 240" data-ring role="img" aria-label="Twenty WireGuard servers around the iOS VPN app. Click a server to ping it."></svg><button type="button" class="act ghost" data-pingall>Ping all 20</button><p class="cap">Twenty WireGuard servers for our iOS VPN, with DNS filtering and recursive resolution from the root using dnsmasq and Unbound.</p></div>' +
+  '<div class="w"><span class="stamp">Unfinished</span><p><b style="font-family:var(--display);font-weight:400;font-size:28px;color:var(--phos)">Helix</b><br>My most ambitious project, and the one I could not make work. It still bothers me.</p><div class="hx"><div><b>LogBERT</b>events</div><div><b>MalConv</b>executables</div><div><b>Diffusion</b>traffic</div><div class="w3"><b>GNN</b>one final judgment from all three</div></div><div class="court" data-court><p><b>Prosecutor:</b> argues it is an attack.</p><p><b>Defender:</b> argues it is normal behavior.</p><p><b>Judge:</b> decides.</p></div><button type="button" class="act ghost" data-hearing>Hold a hearing</button></div>' +
+  '<p>Then I learned prompt injection and how to defend against it, and moved into building and securing agents. These three now work across our repositories:</p>' +
+  '<div class="w"><svg class="pipe" viewBox="0 0 340 150" role="img" aria-label="Sift and QA Agent send findings to BugSmith, which opens a pull request." data-pipe><rect data-n="sift" x="2" y="12" width="112" height="48"/><text x="10" y="36">Sift</text><text class="s" x="10" y="50">CVEs vs our repos</text><rect data-n="qa" x="2" y="90" width="112" height="48"/><text x="10" y="114">QA Agent</text><text class="s" x="10" y="128">tests our web apps</text><rect data-n="smith" x="140" y="51" width="88" height="48"/><text x="150" y="75">BugSmith</text><text class="s" x="150" y="89">writes the fix</text><rect data-n="pr" x="252" y="51" width="82" height="48"/><text x="262" y="75">PR</text><text class="s" x="262" y="89">opened</text><path d="M114 36 H127 V68 H140"/><path d="M114 114 H127 V82 H140"/><path d="M228 75 H252"/><circle class="pk" data-pk r="4" cx="-10" cy="-10"/></svg><button type="button" class="act" data-send>Send a finding</button></div>' +
+  '<p class="muted">Around those: MCP servers, internal tools, plenty of throwaway agents, and a reverse-engineering agent I have not finished yet.</p>',
+  mount: mountYear },
+{ k: "now", short: "Now", yrs: 0, ang: 0, note: "E5",
+  html: '<h2 data-dec>Status: active<i aria-hidden="true" style="display:inline-block;width:.42em;height:.72em;background:var(--phos);margin-left:.12em;vertical-align:-.04em"></i></h2>' +
+  '<img class="card" data-card src="card_green.webp" width="1280" height="720" alt="Green phosphor terminal ID card for Omar, generated by phosphor.py.">' +
+  '<p class="lede" data-dec>Security engineer turned agent builder, in Agadir. Over a year into my first job and still surprised by it.</p>' +
+  '<p class="cap">The card above came out of phosphor.py, a script I wrote that turns a photo into a green or amber terminal ID. The P1 and P3 switch below flips it.</p>' +
+  '<p>What has been playing through all of it. Each button plays a short original riff in that spirit:</p>' +
+  '<div class="juke" data-juke>' +
+  '<button type="button" data-style="finger"><b>Dire Straits</b><span>current favorite</span></button>' +
+  '<button type="button" data-style="rock"><b>Led Zeppelin</b><span>riffs</span></button>' +
+  '<button type="button" data-style="swamp"><b>CCR</b><span>Vietnam-era rock</span></button>' +
+  '<button type="button" data-style="metal"><b>Metallica</b><span>heavy</span></button>' +
+  '<button type="button" data-style="boogie"><b>Chuck Berry</b><span>rock and roll</span></button>' +
+  '<button type="button" data-style="western"><b>Marty Robbins</b><span>found him through Fallout</span></button>' +
+  '<button type="button" data-style="trumpet"><b>Louis Armstrong</b><span>jazz</span></button>' +
+  '<button type="button" data-style="croon"><b>Sinatra, Dean Martin</b><span>the 50s</span></button>' +
+  '<button type="button" data-style="arena"><b>Bon Jovi</b><span>arena rock</span></button>' +
+  '<button type="button" data-style="bomb"><b>Counter-Strike</b><span>2,000 hours, 17K violet</span></button>' +
+  '</div>' +
+  '<div class="tags"><span>Red Dead Redemption on the Xbox 360</span><span>RDR 2</span><span>The Wire</span><span>The Dollars Trilogy</span><span>Once Upon a Time in the West</span><span>They Call Me Trinity</span></div>' +
+  '<p class="muted">Everything in this sky already happened. Like starlight, it took a few years to reach you. The next point of light is being made now.</p>',
+  mount: mountNow }
+];
+
+/* =====================================================================
+   SKY (canvas radar)
+   ===================================================================== */
+var cv = $("#sky"), g = cv.getContext("2d"), W = 0, H = 0, DPR = 1;
+var cen = { x: 0, y: 0 }, tgt = { x: 0, y: 0 }, R = 100, Rt = 100;
+var dust = [], photons = [], hover = -1, sel = -1, sweep = -1.2, lastSweep = sweep, mouse = { x: 0, y: 0 };
+var MAXY = 7.8, powered = false, t0 = performance.now();
+for (var i = 0; i < 340; i++) dust.push({ x: Math.random(), y: Math.random(), b: Math.random(), p: Math.random() * 6.3, s: Math.random() < .08 ? 1.6 : 1 });
+M.forEach(function (m, i) { m.flare = 0; m.idx = i; });
+function panelOpen() { return !$("#panel").hidden; }
+function layout() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  root.style.setProperty("--bar-h", $(".bar").offsetHeight + "px");
+  W = cv.clientWidth; H = cv.clientHeight; cv.width = W * DPR; cv.height = H * DPR;
+  var wide = W > 860, pw = panelOpen() && wide ? Math.min(480, W * .42) : 0;
+  var top = 70, bottom = 84;
+  var availW = W - pw, availH = H - top - bottom;
+  if (panelOpen() && !wide) availH = H - $(".bar").offsetHeight - $("#panel").offsetHeight - top + 10;
+  tgt.x = availW / 2;
+  tgt.y = top + Math.max(availH, 120) / 2;
+  Rt = Math.max(60, Math.min(availW * .46, Math.max(availH, 120) * .5));
+  if (!cen.x) { cen.x = tgt.x; cen.y = tgt.y; R = Rt; }
+}
+function rOf(y) { return R * (.06 + .94 * y / MAXY); }
+function pos(m, t) {
+  if (!m.yrs) return { x: cen.x, y: cen.y };
+  var a = m.ang + Math.sin(t / 9000 + m.idx) * .015, r = rOf(m.yrs);
+  return { x: cen.x + Math.cos(a) * r, y: cen.y + Math.sin(a) * r };
+}
+function angDiff(a, b) { var d = (a - b) % (Math.PI * 2); if (d < 0) d += Math.PI * 2; return d; }
+function frame(ts) {
+  var t = ts - t0;
+  cen.x += (tgt.x - cen.x) * .08; cen.y += (tgt.y - cen.y) * .08; R += (Rt - R) * .08;
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.fillStyle = rgba(col.bg, 1); g.fillRect(0, 0, W, H);
+  var P = col.phos, D = col["phos-dim"];
+  /* dust: far stars, slight parallax */
+  var px = (mouse.x / (W || 1) - .5) * 10, py = (mouse.y / (H || 1) - .5) * 10;
+  for (var i = 0; i < dust.length; i++) {
+    var s = dust[i], a = .12 + .3 * s.b * (reduce ? 1 : (.6 + .4 * Math.sin(t / 900 + s.p)));
+    g.fillStyle = rgba(P, a * (powered ? 1 : .5)); g.fillRect(s.x * W + px * s.b, s.y * H + py * s.b, s.s, s.s);
+  }
+  /* range rings */
+  g.lineWidth = 1;
+  [1, 3, 5, 7].forEach(function (y) {
+    var r = rOf(y);
+    g.strokeStyle = rgba(D, .55); g.setLineDash(y === 7 ? [] : [2, 5]);
+    g.beginPath(); g.arc(cen.x, cen.y, r, 0, Math.PI * 2); g.stroke();
+    g.setLineDash([]);
+    if (panelOpen() && W <= 860) return;
+    g.fillStyle = rgba(col.muted, .8); g.font = "11px 'IBM Plex Mono', monospace";
+    g.fillText(y === 1 ? "1 YR AGO" : y + " YRS", cen.x + r * .707 + 6, cen.y - r * .707 - 4);
+  });
+  /* bearing ticks */
+  var ro = rOf(7.6);
+  g.strokeStyle = rgba(D, .7);
+  for (var k = 0; k < 72; k++) { var aa = k / 72 * Math.PI * 2, l = k % 6 ? 4 : 10; g.beginPath(); g.moveTo(cen.x + Math.cos(aa) * ro, cen.y + Math.sin(aa) * ro); g.lineTo(cen.x + Math.cos(aa) * (ro + l), cen.y + Math.sin(aa) * (ro + l)); g.stroke(); }
+  /* sweep */
+  if (powered) {
+    lastSweep = sweep;
+    sweep += reduce ? 0 : .0105;
+    if (!reduce) {
+      for (var w = 0; w < 36; w++) {
+        var a0 = sweep - w * .024;
+        g.fillStyle = rgba(P, .1 * (1 - w / 36));
+        g.beginPath(); g.moveTo(cen.x, cen.y); g.arc(cen.x, cen.y, ro, a0 - .026, a0); g.closePath(); g.fill();
+      }
+      g.strokeStyle = rgba(P, .8); g.lineWidth = 1.3;
+      g.beginPath(); g.moveTo(cen.x, cen.y); g.lineTo(cen.x + Math.cos(sweep) * ro, cen.y + Math.sin(sweep) * ro); g.stroke();
+    }
+  }
+  /* memories */
+  M.forEach(function (m, i) {
+    var p = pos(m, t);
+    if (powered && m.yrs && !reduce) {
+      if (angDiff(m.ang, lastSweep) < angDiff(sweep, lastSweep) && angDiff(sweep, lastSweep) < 1) {
+        m.flare = 1; I.bell(N(m.note), .045);
+        photons.push({ m: m, k: 0, sp: .0024 / (m.yrs / 3 + .4) });
+      }
+    }
+    m.flare *= .965;
+    var on = i === hover || i === sel, fl = m.flare;
+    var rr = (m.yrs ? 3.2 : 5) + fl * 3 + (on ? 2 : 0);
+    var gr = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, 26 + fl * 30);
+    gr.addColorStop(0, rgba(P, .45 + fl * .4)); gr.addColorStop(1, rgba(P, 0));
+    g.fillStyle = gr; g.beginPath(); g.arc(p.x, p.y, 26 + fl * 30, 0, Math.PI * 2); g.fill();
+    g.fillStyle = rgba(P, 1); g.beginPath(); g.arc(p.x, p.y, rr, 0, Math.PI * 2); g.fill();
+    if (!m.yrs) {
+      var pr = 10 + ((t / 30) % 40);
+      g.strokeStyle = rgba(P, Math.max(0, 1 - (pr - 10) / 40) * .7); g.beginPath(); g.arc(p.x, p.y, pr, 0, Math.PI * 2); g.stroke();
+    }
+    if (on) {
+      var b = 16, sp = reduce ? 0 : t / 1400;
+      g.strokeStyle = rgba(P, .9); g.lineWidth = 1.5;
+      for (var c = 0; c < 4; c++) { var ca = sp + c * Math.PI / 2; g.beginPath(); g.arc(p.x, p.y, b, ca + .25, ca + 1.3); g.stroke(); }
+    }
+    var compact = panelOpen() && W <= 860;
+    if (compact && !on) { m._x = p.x; m._y = p.y; return; }
+    g.font = (on ? "22px" : "19px") + " 'VT323', monospace";
+    g.fillStyle = rgba(on ? P : col.fg, on ? 1 : .72 + fl * .28);
+    var lx = p.x + 14, ly = p.y - 10;
+    if (!m.yrs) { lx = p.x - 14; ly = p.y + 30; }
+    if (lx + 120 > W) lx = p.x - 14 - g.measureText(m.short).width;
+    g.fillText(m.yrs ? m.short : "NOW", lx, ly);
+    m._x = p.x; m._y = p.y;
+  });
+  /* photons: light leaving each memory and arriving now */
+  for (var q = photons.length - 1; q >= 0; q--) {
+    var ph = photons[q]; ph.k += ph.sp;
+    if (ph.k >= 1) { photons.splice(q, 1); M[7].flare = Math.min(1, M[7].flare + .35); continue; }
+    var sp0 = pos(ph.m, t), x = sp0.x + (cen.x - sp0.x) * ph.k, y = sp0.y + (cen.y - sp0.y) * ph.k;
+    g.fillStyle = rgba(P, .9); g.fillRect(x - 1, y - 1, 2.4, 2.4);
+    g.strokeStyle = rgba(P, .18); g.beginPath(); g.moveTo(x, y); g.lineTo(sp0.x + (cen.x - sp0.x) * Math.max(0, ph.k - .12), sp0.y + (cen.y - sp0.y) * Math.max(0, ph.k - .12)); g.stroke();
+  }
+  requestAnimationFrame(frame);
+}
+function hit(x, y) {
+  var best = -1, bd = 26 * 26;
+  M.forEach(function (m, i) { var dx = m._x - x, dy = m._y - y, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+cv.addEventListener("pointermove", function (e) {
+  var r = cv.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top;
+  var h = hit(mouse.x, mouse.y);
+  if (h !== hover) { hover = h; if (h >= 0) I.blip(N(M[h].note) * 2, .025); }
+  cv.classList.toggle("hot", h >= 0);
+});
+cv.addEventListener("pointerleave", function () { hover = -1; cv.classList.remove("hot"); });
+cv.addEventListener("click", function (e) {
+  var r = cv.getBoundingClientRect(), h = hit(e.clientX - r.left, e.clientY - r.top);
+  if (h >= 0) openM(h); else if (panelOpen()) closeM();
+});
+window.addEventListener("resize", layout);
+
+/* =====================================================================
+   PANEL
+   ===================================================================== */
+var cleanup = null;
+var tl = $("#tl");
+M.forEach(function (m, i) {
+  var li = document.createElement("li"), b = document.createElement("button");
+  b.type = "button"; b.id = "tl-" + m.k;
+  b.innerHTML = (m.yrs ? "~" + Math.round(m.yrs) + " YR" + (Math.round(m.yrs) === 1 ? "" : "S") + " AGO" : "LIVE") + "<span>" + m.short + "</span>";
+  b.addEventListener("click", function () { openM(i); });
+  b.addEventListener("pointerenter", function () { I.tick(.03); });
+  li.appendChild(b); tl.appendChild(li);
+});
+function decode(el) {
+  if (reduce) return;
+  var full = el.textContent, glyphs = "#%&@$*+=/\\<>01", start = performance.now(), dur = 420 + full.length * 4;
+  var nodes = []; (function walk(n) { n.childNodes.forEach(function (c) { if (c.nodeType === 3) nodes.push({ n: c, t: c.textContent }); else walk(c); }); })(el);
+  var last = 0;
+  (function step(ts) {
+    var k = Math.min(1, (ts - start) / dur), offs = 0;
+    nodes.forEach(function (o) {
+      var L = o.t.length, out = "";
+      for (var i = 0; i < L; i++) { var ch = o.t[i], f = (offs + i) / full.length; out += (f < k || ch === " ") ? ch : glyphs[(Math.random() * glyphs.length) | 0]; }
+      offs += L; o.n.textContent = out;
+    });
+    if (ts - last > 45) { I.tick(.02); last = ts; }
+    if (k < 1) requestAnimationFrame(step); else nodes.forEach(function (o) { o.n.textContent = o.t; });
+  })(start);
+}
+function openM(i) {
+  if (cleanup) { try { cleanup(); } catch (e) {} cleanup = null; }
+  sel = i; var m = M[i], p = $("#panel"), body = $("#pBody");
+  var was = !p.hidden;
+  p.hidden = false; p.classList.remove("in"); void p.offsetWidth; if (!was) p.classList.add("in");
+  $("#pMeta").textContent = m.yrs ? "Memory " + (i + 1) + " of 8, light left ~" + Math.round(m.yrs) + (Math.round(m.yrs) === 1 ? " year" : " years") + " ago" : "Memory 8 of 8, live";
+  body.innerHTML = m.html; body.scrollTop = 0;
+  $$("[data-card]", body).forEach(function (im) { var ph = root.getAttribute("data-phosphor") === "amber" ? "amber" : "green"; im.src = "card_" + ph + ".webp"; });
+  $$("[data-dec]", body).forEach(decode);
+  $$(".tl button").forEach(function (b, k) { b.setAttribute("aria-current", String(k === i)); });
+  var cur = $("#tl-" + m.k); if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: "nearest", inline: "nearest" });
+  $("#hint").style.opacity = 0;
+  layout();
+  m.flare = 1;
+  if (live()) { I.sweep(220, 880, .18, .03); I.bell(N(m.note), .07); }
+  cleanup = m.mount(body) || null;
+}
+function closeM() {
+  if (cleanup) { try { cleanup(); } catch (e) {} cleanup = null; }
+  $("#panel").hidden = true; sel = -1; layout();
+  $$(".tl button").forEach(function (b) { b.setAttribute("aria-current", "false"); });
+  I.sweep(700, 160, .2, .03);
+}
+$("#pClose").addEventListener("click", closeM);
+$("#pPrev").addEventListener("click", function () { openM((sel + M.length - 1) % M.length); });
+$("#pNext").addEventListener("click", function () { openM((sel + 1) % M.length); });
+document.addEventListener("keydown", function (e) {
+  if ($("#gate") && !$("#gate").hidden) return;
+  var tag = (e.target && e.target.tagName) || "";
+  if (e.key === "Escape" && panelOpen()) closeM();
+  else if (panelOpen() && (e.key === "ArrowRight" || e.key === "ArrowLeft") && !(e.target.classList && e.target.classList.contains("opt"))) { openM((sel + (e.key === "ArrowRight" ? 1 : M.length - 1)) % M.length); }
+  else if (/^[1-8]$/.test(e.key) && tag !== "INPUT") openM(+e.key - 1);
+});
+
+/* =====================================================================
+   WIDGETS
+   ===================================================================== */
+function mountGravity(body) {
+  var c = $(".gcv", body), x = c.getContext("2d"), w, h, dpr, run = true, drag = false;
+  var m = { x: 0, y: 0 }, b = { x: .42, y: 0, vx: 0, vy: .78 }, K = .26, tone = null, tg = null;
+  function sz() { dpr = Math.min(devicePixelRatio || 1, 2); w = c.clientWidth; h = c.clientHeight; c.width = w * dpr; c.height = h * dpr; x.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  sz();
+  function z(px, py) { var dx = px - m.x, dy = py - m.y; return -1.0 / (1 + (dx * dx + dy * dy) * 9); }
+  function P(px, py) { return [w / 2 + px * w * .42, h * .4 + (py * .5 - z(px, py) * .28) * h * .8]; }
+  function inv(sx, sy) { return { x: (sx - w / 2) / (w * .42), y: ((sy - h * .4) / (h * .8)) / .5 }; }
+  function reset() { var r = .38, a = Math.random() * 6.28; b.x = m.x + Math.cos(a) * r; b.y = m.y + Math.sin(a) * r; var v = Math.sqrt(K / r); b.vx = -Math.sin(a) * v; b.vy = Math.cos(a) * v; }
+  function ensureTone() {
+    if (tone || !live()) return;
+    var ctx = S.ctx; tone = ctx.createOscillator(); tg = ctx.createGain(); var lp = ctx.createBiquadFilter();
+    tone.type = "triangle"; lp.type = "lowpass"; lp.frequency.value = 1200; tg.gain.value = 0;
+    tone.connect(lp); lp.connect(tg); send(tg, .4); tone.start(); tg.gain.setTargetAtTime(.035, now(), .3);
+  }
+  function step() {
+    for (var s = 0; s < 4; s++) {
+      var dx = m.x - b.x, dy = m.y - b.y, r2 = dx * dx + dy * dy + .002, r = Math.sqrt(r2), a = K / r2;
+      b.vx += a * dx / r * .004; b.vy += a * dy / r * .004; b.x += b.vx * .004; b.y += b.vy * .004;
+      if (r < .05 || r > 1.7) { reset(); I.blip(220, .03); }
+    }
+  }
+  function draw() {
+    if (!run) return;
+    if (!drag) step(); else { step(); }
+    x.clearRect(0, 0, w, h);
+    var D = col["phos-dim"], Pc = col.phos;
+    x.lineWidth = 1; x.strokeStyle = rgba(D, .9);
+    var Nn = 16, st = 40;
+    for (var i = 0; i <= Nn; i++) {
+      var a = -1 + 2 * i / Nn;
+      x.beginPath(); for (var s = 0; s <= st; s++) { var bb = -1 + 2 * s / st, p = P(a, bb); s ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]); } x.stroke();
+      x.beginPath(); for (s = 0; s <= st; s++) { bb = -1 + 2 * s / st; p = P(bb, a); s ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]); } x.stroke();
+    }
+    var c0 = P(m.x, m.y); x.shadowColor = rgba(Pc, 1); x.shadowBlur = 22; x.fillStyle = rgba(Pc, 1);
+    x.beginPath(); x.arc(c0[0], c0[1] - 8, Math.max(12, w * .045), 0, 7); x.fill();
+    var o = P(b.x, b.y); x.shadowBlur = 12; x.beginPath(); x.arc(o[0], o[1] - 4, Math.max(4.5, w * .014), 0, 7); x.fill(); x.shadowBlur = 0;
+    var spd = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+    ensureTone(); if (tone) { tone.frequency.setTargetAtTime(110 + spd * 260, now(), .05); tg.gain.setTargetAtTime(live() ? .035 : 0, now(), .1); }
+    if (!reduce) requestAnimationFrame(draw);
+  }
+  function pt(e) { var r = c.getBoundingClientRect(); return inv(e.clientX - r.left, e.clientY - r.top); }
+  c.addEventListener("pointerdown", function (e) { drag = true; c.setPointerCapture(e.pointerId); var q = pt(e); m.x = Math.max(-.8, Math.min(.8, q.x)); m.y = Math.max(-.8, Math.min(.8, q.y)); I.blip(140, .05); if (reduce) draw(); });
+  c.addEventListener("pointermove", function (e) { if (!drag) return; var q = pt(e); m.x = Math.max(-.8, Math.min(.8, q.x)); m.y = Math.max(-.8, Math.min(.8, q.y)); if (reduce) draw(); });
+  c.addEventListener("pointerup", function () { drag = false; });
+  var ro = new ResizeObserver(sz); ro.observe(c);
+  if (reduce) { run = true; draw(); } else requestAnimationFrame(draw);
+  return function () { run = false; ro.disconnect(); if (tone) { tg.gain.setTargetAtTime(0, now(), .05); tone.stop(now() + .3); } };
+}
+
+function mountInstaller(body) {
+  var btn = $("[data-run]", body), out = $("[data-out]", body), timers = [];
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    var fz = $("#freeze"), box = $("#freezeBox");
+    box.innerHTML = "<b>GTA5_Setup.exe</b><span>Installing... 3%</span>";
+    fz.hidden = false; document.body.classList.add("glitch"); S.busy = true; duck(true);
+    if (live()) {
+      var t = now();
+      for (var i = 0; i < 26; i++) osc("square", 60 + Math.random() * 2600, t + i * .05, .045, .05, { wet: 0 });
+      noise(t, 1.3, .08, "bandpass", 1200, .5);
+      osc("sawtooth", 50, t + 1.3, 1.1, .05, { wet: 0, filter: "lowpass", ff: 400 });
+    }
+    timers.push(setTimeout(function () {
+      document.body.classList.remove("glitch");
+      box.innerHTML = "<b>Not responding</b><span>The whole PC is frozen. Nothing works.</span>";
+    }, 1300));
+    timers.push(setTimeout(function () {
+      box.innerHTML = "<b>format C:</b><span>Learning to format a PC from my mom's phone</span><div class=\"prog\"><i></i></div>";
+      var bar = $(".prog i", box), st = performance.now(), last = 0;
+      (function f(ts) { var k = Math.min(1, (ts - st) / 1700); bar.style.width = (k * 100) + "%"; if (ts - last > 70) { I.tick(.05); last = ts; } if (k < 1) requestAnimationFrame(f); })(st);
+    }, 2500));
+    timers.push(setTimeout(function () {
+      fz.hidden = true; S.busy = false; duck(false);
+      I.bell(N("A4"), .06); I.bell(N("E5"), .05, now() + .15);
+      out.textContent = "Formatted. That was the day I started asking how it happened.";
+      btn.disabled = false; btn.innerHTML = "Run it again <small>you never learn</small>";
+    }, 4400));
+  });
+  return function () { timers.forEach(clearTimeout); $("#freeze").hidden = true; document.body.classList.remove("glitch"); S.busy = false; duck(false); };
+}
+
+function mountPitch(body) {
+  var ball = $("[data-ball]", body), kp = $("[data-keeper]", body), btn = $("[data-shoot]", body), sc = $("[data-score]", body), goals = 0, alive = true;
+  var path = [[74, 96], [170, 52], [238, 92]];
+  function anim(a, bpt, ms, cb) {
+    var st = performance.now();
+    (function f(ts) { if (!alive) return; var k = Math.min(1, (ts - st) / (reduce ? 1 : ms)), e = 1 - Math.pow(1 - k, 2);
+      ball.setAttribute("cx", a[0] + (bpt[0] - a[0]) * e); ball.setAttribute("cy", a[1] + (bpt[1] - a[1]) * e - Math.sin(k * Math.PI) * 10);
+      if (k < 1) requestAnimationFrame(f); else cb && cb(); })(st);
+  }
+  btn.addEventListener("click", function () {
+    btn.disabled = true; ball.setAttribute("cx", 74); ball.setAttribute("cy", 96);
+    I.kick(undefined, .2); I.pluck(N("E3"), undefined, .3, .06, 1500);
+    anim(path[0], path[1], 520, function () {
+      I.kick(undefined, .2); I.blip(N("A4"), .04);
+      anim(path[1], path[2], 420, function () {
+        var miss = Math.random() < .18, ty = 70 + Math.random() * 30;
+        kp.setAttribute("y", miss ? ty - 8 : (ty > 85 ? 70 : 92));
+        I.kick(undefined, .45);
+        anim(path[2], [miss ? 306 : 313, miss ? 64 : ty], 240, function () {
+          if (miss) { I.clank(); sc.textContent = goals + (goals === 1 ? " goal" : " goals") + ", off the post"; }
+          else { goals++; I.crowd(2.2); I.bell(N("A5"), .04, now() + .2); sc.textContent = goals + (goals === 1 ? " goal" : " goals"); }
+          btn.disabled = false; btn.textContent = "Again";
+          setTimeout(function () { if (alive) kp.setAttribute("y", 78); }, 900);
+        });
+      });
+    });
+  });
+  return function () { alive = false; };
+}
+
+function mountFork(body) {
+  var opts = $$(".opt", body), out = $("[data-out]", body), cur = 0, done = false, timers = [];
+  function show(i, picked) { cur = i; opts.forEach(function (o, k) { o.classList.toggle("on", k === i); o.classList.toggle("picked", !!picked && k === i); }); }
+  function pick(i) {
+    if (done) return;
+    if (i === 1) { done = true; show(1, true); I.pad([N("A3"), N("C4"), N("E4"), N("A4")], undefined, 2.4, .12); I.bell(N("E5"), .06); out.textContent = "Cybersecurity. Good choice. I made the same one."; return; }
+    done = true; show(i); I.blip(N("C4"), .05);
+    out.textContent = (i === 0 ? "Networking pulled hard. " : "Cloud made sense on paper. ") + "Then something older said cybersecurity.";
+    var seq = reduce ? [[1, 0]] : [[i, 700], [1, 450], [i, 600], [1, 400]];
+    var t = 0; seq.forEach(function (s, k) { t += s[1]; timers.push(setTimeout(function () { show(s[0]); I.blip(N(s[0] === 1 ? "E4" : "C4"), .045); if (k === seq.length - 1) { done = false; timers.push(setTimeout(function () { pick(1); }, reduce ? 0 : 500)); } }, t)); });
+  }
+  opts.forEach(function (o, i) {
+    o.addEventListener("click", function () { pick(i); });
+    o.addEventListener("pointerenter", function () { if (!done) { show(i); I.blip(N(PENTA[i + 2]), .03); } });
+    o.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); var n = (i + (e.key === "ArrowDown" ? 1 : 2)) % 3; opts[n].focus(); if (!done) { show(n); I.blip(N(PENTA[n + 2]), .04); } }
+    });
+  });
+  return function () { timers.forEach(clearTimeout); };
+}
+
+function mountRank(body) {
+  var big = $("[data-pct]", body), cells = $("[data-cells]", body), again = $("[data-again]", body), alive = true, raf;
+  for (var i = 0; i < 50; i++) cells.appendChild(document.createElement("i"));
+  var cs = $$("i", cells);
+  function run() {
+    var st = performance.now(), dur = reduce ? 1 : 2600, lastV = 101;
+    cs.forEach(function (c) { c.className = "lit"; });
+    (function f(ts) {
+      if (!alive) return;
+      var k = Math.min(1, (ts - st) / dur), e = 1 - Math.pow(1 - k, 3), v = Math.round(100 - 98 * e);
+      big.textContent = v + "%";
+      var keep = Math.max(1, Math.round(v / 2));
+      cs.forEach(function (c, j) { c.className = j === 0 && v <= 2 ? "top" : (j < keep ? "lit" : ""); });
+      if (v !== lastV && v % 4 === 0) I.blip(200 + (100 - v) * 9, .03);
+      lastV = v;
+      if (k < 1) raf = requestAnimationFrame(f); else { I.bell(N("A5"), .06); I.bell(N("E6"), .04, now() + .12); }
+    })(st);
+  }
+  again.addEventListener("click", run);
+  setTimeout(run, 350);
+  return function () { alive = false; cancelAnimationFrame(raf); };
+}
+
+function mountDuel(body) {
+  var lines = $$("[data-subs] p", body), timers = [], ships = $$("[data-ship] button", body), after = $("[data-after]", body);
+  /* an original four-phrase reed line, one phrase per subtitle */
+  var phrases = [["A3", "E4"], ["G4", "A4", "C5"], ["D5", "C5", "A4"], ["E4", "G4", "A4"]];
+  S.busy = true; duck(true);
+  lines.forEach(function (p, i) {
+    timers.push(setTimeout(function () {
+      p.classList.add("on");
+      var t = live() ? now() : 0;
+      phrases[i].forEach(function (n, k) { I.reed(N(n), t + k * .32, k === phrases[i].length - 1 ? 1.1 : .3, .09); });
+      if (i === 0) I.pluck(N("A2"), t, 2.4, .1, 900);
+    }, reduce ? 0 : 400 + i * 1700));
+  });
+  timers.push(setTimeout(function () { S.busy = false; duck(false); }, reduce ? 0 : 400 + 4 * 1700));
+  var n = 0;
+  ships.forEach(function (b, i) {
+    b.addEventListener("click", function () {
+      if (b.classList.contains("done")) return;
+      b.classList.add("done"); n++;
+      I.kick(undefined, .25); I.pluck(N(["A3", "C4", "E4", "A4"][i]), undefined, .8, .09);
+      if (n === 4) { I.pad([N("A3"), N("E4"), N("A4"), N("C5")], now() + .2, 2.6, .14); after.textContent = "All four shipped. Started the next Monday. One month as an intern, then hired."; after.classList.remove("muted"); }
+    });
+  });
+  return function () { timers.forEach(clearTimeout); S.busy = false; duck(false); };
+}
+
+function mountYear(body) {
+  var alive = true, timers = [];
+  /* compile */
+  var bar = $("[data-bar]", body), mb = $("[data-mb]", body), cb = $("[data-compile]", body);
+  cb.addEventListener("click", function () {
+    cb.disabled = true; var st = performance.now(), dur = reduce ? 1 : 2000, last = 0;
+    I.sweep(900, 70, 2, .05);
+    (function f(ts) {
+      if (!alive) return;
+      var k = Math.min(1, (ts - st) / dur), e = k * k * (3 - 2 * k), v = 200 - 198 * e;
+      bar.style.width = (v / 2) + "%"; mb.textContent = (v > 10 ? Math.round(v) : v.toFixed(1)) + " MB";
+      if (ts - last > 60) { I.tick(.04); last = ts; }
+      if (k < 1) requestAnimationFrame(f); else { mb.textContent = "~2 MB"; I.bell(N("E5"), .06); cb.disabled = false; cb.textContent = "Recompile"; bar.style.width = "1%"; }
+    })(st);
+  });
+  /* servers */
+  var svg = $("[data-ring]", body), NS = "http://www.w3.org/2000/svg", dots = [], links = [];
+  var core = document.createElementNS(NS, "text"); core.setAttribute("x", 120); core.setAttribute("y", 127); core.textContent = "iOS";
+  for (var i = 0; i < 20; i++) {
+    var a = i / 20 * Math.PI * 2 - Math.PI / 2, x = 120 + Math.cos(a) * 96, y = 120 + Math.sin(a) * 96;
+    var ln = document.createElementNS(NS, "line"); ln.setAttribute("x1", 120); ln.setAttribute("y1", 120); ln.setAttribute("x2", x); ln.setAttribute("y2", y); svg.appendChild(ln); links.push(ln);
+    var c = document.createElementNS(NS, "circle"); c.setAttribute("class", "srv"); c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", 7); svg.appendChild(c); dots.push(c);
+    (function (k) { c.addEventListener("click", function () { ping(k); }); })(i);
+  }
+  svg.appendChild(core);
+  var scale = ["A4", "C5", "D5", "E5", "G5"];
+  function ping(k) {
+    dots[k].classList.add("up"); links[k].classList.add("up");
+    I.blip(N(scale[k % 5]) * (k >= 10 ? 2 : 1), .035);
+    timers.push(setTimeout(function () { links[k].classList.remove("up"); }, 700));
+  }
+  $("[data-pingall]", body).addEventListener("click", function () {
+    dots.forEach(function (d) { d.classList.remove("up"); });
+    for (var k = 0; k < 20; k++) (function (k) { timers.push(setTimeout(function () { if (alive) ping(k); }, reduce ? 0 : k * 90)); })(k);
+  });
+  /* hearing */
+  var court = $$("[data-court] p", body);
+  $("[data-hearing]", body).addEventListener("click", function () {
+    court.forEach(function (p) { p.classList.remove("on"); });
+    [["A2", "C3"], ["E3", "G3"], ["A3", "E4"]].forEach(function (ns, i) {
+      timers.push(setTimeout(function () {
+        if (!alive) return; court[i].classList.add("on");
+        ns.forEach(function (n, k) { (i === 2 ? I.brass : I.reed)(N(n), now() + k * .22, .5, .08); });
+      }, reduce ? 0 : i * 1000));
+    });
+  });
+  /* pipeline */
+  var pk = $("[data-pk]", body), rects = {}, src = 0;
+  $$("rect[data-n]", body).forEach(function (r) { rects[r.dataset.n] = r; });
+  var routes = [[[114, 36], [127, 36], [127, 68], [140, 68], [228, 75], [252, 75]], [[114, 114], [127, 114], [127, 82], [140, 82], [228, 75], [252, 75]]];
+  $("[data-send]", body).addEventListener("click", function () {
+    var r = routes[src], from = src ? "qa" : "sift"; src = 1 - src;
+    Object.keys(rects).forEach(function (k) { rects[k].classList.remove("lit"); });
+    rects[from].classList.add("lit"); I.blip(N("E4"), .05);
+    var seg = 0, st = performance.now();
+    (function f(ts) {
+      if (!alive) return;
+      var a = r[seg], b = r[seg + 1], k = Math.min(1, (ts - st) / (reduce ? 1 : 260));
+      pk.setAttribute("cx", a[0] + (b[0] - a[0]) * k); pk.setAttribute("cy", a[1] + (b[1] - a[1]) * k);
+      if (k >= 1) {
+        seg++; st = ts;
+        if (seg === 3) { rects.smith.classList.add("lit"); I.blip(N("A4"), .05); I.tick(.06); }
+        if (seg >= r.length - 1) { rects.pr.classList.add("lit"); I.bell(N("C6"), .05); I.bell(N("G5"), .04, now() + .1); return; }
+      }
+      requestAnimationFrame(f);
+    })(st);
+  });
+  return function () { alive = false; timers.forEach(clearTimeout); };
+}
+
+/* original riffs, one per style; none of them quote a real song */
+var RIFF = {
+  finger: function (t) { var a = ["D4", "A4", "F5", "A4", "C4", "G4", "E5", "G4", "Bb3", "F4", "D5", "F4", "A3", "E4", "C#5", "E4"]; a.forEach(function (n, i) { I.pluck(N(n), t + i * .2, 1.2, .1, 2600); }); return 3.4; },
+  rock: function (t) { var a = [["E2", 0, .3], ["G2", .3, .15], ["A2", .45, .3], ["E2", .9, .15], ["D3", 1.05, .3], ["C#3", 1.35, .15], ["A2", 1.5, .45], ["E2", 2.1, .3], ["G2", 2.4, .15], ["A2", 2.55, .6]]; a.forEach(function (x) { I.dist(N(x[0]), t + x[1], x[2], .07); }); [0, .6, 1.2, 1.8, 2.4].forEach(function (d) { I.kick(t + d, .3); I.snare(t + d + .3, .08); }); return 3.4; },
+  swamp: function (t) { var a = ["E3", "E3", "G3", "A3", "E3", "D3", "B2", "D3", "E3", "E3", "G3", "A3", "B3", "A3", "G3", "E3"]; a.forEach(function (n, i) { I.pluck(N(n), t + i * .19, .5, .1, 1800); }); for (var i = 0; i < 16; i++) { I.hat(t + i * .19, .02); if (i % 4 === 0) I.kick(t + i * .19, .25); } return 3.3; },
+  metal: function (t) { for (var i = 0; i < 12; i++) I.dist(N("E2"), t + i * .12, .08, .07); [["G2", 1.44], ["F#2", 1.68], ["E2", 1.92], ["A#2", 2.16], ["A2", 2.4]].forEach(function (x) { I.dist(N(x[0]), t + x[1], .22, .08); }); for (i = 0; i < 20; i++) I.kick(t + i * .12, .2); return 3; },
+  boogie: function (t) { var a = ["A2", "C#3", "E3", "F#3", "G3", "F#3", "E3", "C#3", "A2", "C#3", "E3", "F#3", "G3", "F#3", "E3", "C#3"]; a.forEach(function (n, i) { I.pluck(N(n), t + i * .17 + (i % 2 ? .03 : 0), .25, .11, 2200); }); for (var i = 0; i < 8; i++) { I.snare(t + i * .34 + .17, .05); I.kick(t + i * .34, .2); } return 3; },
+  western: function (t) { ["A2", "E3", "A3", "C4", "E4", "C4", "A3", "E3"].forEach(function (n, i) { I.pluck(N(n), t + i * .28, 1.4, .08, 1800); }); [["E5", .3, .8], ["D5", 1.2, .4], ["C5", 1.6, .4], ["A4", 2.0, 1.4]].forEach(function (x) { I.reed(N(x[0]), t + x[1], x[2], .08); }); return 3.6; },
+  trumpet: function (t) { [["C4", 0, .25], ["E4", .3, .25], ["G4", .6, .25], ["A4", .9, .5], ["G4", 1.5, .2], ["E4", 1.75, .2], ["F4", 2.0, .7]].forEach(function (x) { I.brass(N(x[0]), t + x[1], x[2], .08); }); I.pad([N("C3"), N("E3"), N("A3")], t, 1.4, .1); I.pad([N("D3"), N("F3"), N("A3")], t + 1.4, 1.6, .1); for (var i = 0; i < 6; i++) I.hat(t + i * .5 + .33, .03); return 3.2; },
+  croon: function (t) { [[["C3", "E3", "G3", "B3"], 0], [["A2", "C#3", "G3", "B3"], .9], [["D3", "F3", "A3", "C4"], 1.8], [["G2", "F3", "B3", "D4"], 2.7]].forEach(function (x) { I.pad(x[0].map(N), t + x[1], 1.1, .16); }); ["E5", "D5", "C5", "A4"].forEach(function (n, i) { osc("sine", N(n), t + i * .9 + .1, .8, .05, { a: .08, wet: .6 }); }); return 3.8; },
+  arena: function (t) { [["E3", "B3", "E4"], ["C3", "G3", "C4"], ["D3", "A3", "D4"], ["E3", "B3", "E4"]].forEach(function (ch, i) { ch.forEach(function (n) { I.dist(N(n), t + i * .7, .65, .035); }); I.kick(t + i * .7, .35); I.snare(t + i * .7 + .35, .12); }); I.bell(N("B5"), .04, t + 2.1); return 3.2; },
+  bomb: function (t) { var d = .5, tt = 0; for (var i = 0; i < 14; i++) { I.blip(2100, .05, t + tt); tt += d; d *= .82; } noise(t + tt + .1, 1.2, .18, "lowpass", 900, .7, { ffTo: 60, wet: .5 }); I.kick(t + tt + .1, .5); return tt + 1.3; }
+};
+function mountNow(body) {
+  var btns = $$("[data-juke] button", body), timers = [];
+  btns.forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (!live()) { b.querySelector("span").textContent = "turn sound on first"; return; }
+      btns.forEach(function (o) { o.classList.remove("playing"); });
+      b.classList.add("playing"); S.busy = true; duck(true);
+      var len = RIFF[b.dataset.style](now() + .05);
+      timers.push(setTimeout(function () { b.classList.remove("playing"); S.busy = false; duck(false); }, len * 1000 + 300));
+    });
+  });
+  return function () { timers.forEach(clearTimeout); S.busy = false; duck(false); };
+}
+
+/* =====================================================================
+   POWER ON
+   ===================================================================== */
+function boot(withSound) {
+  var gate = $("#gate");
+  if (withSound) {
+    setSound(true);
+    if (S.ctx) { var t = now() + .05; osc("sine", 40, t, 1.4, .25, { glide: 1800, glideT: .9, wet: .3, a: .02 }); noise(t, .35, .2, "lowpass", 3000, .7, { wet: .4 }); }
+  } else setSound(false);
+  gate.classList.add("off");
+  setTimeout(function () { gate.hidden = true; gate.style.display = "none"; }, reduce ? 0 : 600);
+  powered = true;
+  var lines = ["OLD LIGHT OBSERVATORY", "phosphor <b>" + (root.getAttribute("data-phosphor") === "amber" ? "P3 amber" : "P1 green") + "</b>", "sweep <b>armed</b>", "audio <b>" + (withSound ? "on" : "off") + "</b>", "<b>8</b> memories in range"], out = "", li = 0, ci = 0, el = $("#boot");
+  (function type() {
+    if (li >= lines.length) return;
+    var L = lines[li].replace(/<[^>]+>/g, "");
+    ci++;
+    var shown = ci >= L.length ? lines[li] : L.slice(0, ci);
+    el.innerHTML = out + shown;
+    if (ci % 2) I.tick(.03);
+    if (ci >= L.length) { out += lines[li] + "\n"; li++; ci = 0; setTimeout(type, 160); } else setTimeout(type, reduce ? 0 : 24);
+  })();
+  setTimeout(function () { var f = $("#tl button"); if (f) f.focus({ preventScroll: true }); }, 700);
+}
+$("#powerOn").addEventListener("click", function () { boot(true); });
+$("#powerQuiet").addEventListener("click", function () { boot(false); });
+$("#snd").addEventListener("click", function () { setSound(!S.on); if (S.on) I.bell(N("A4"), .05); });
+document.addEventListener("visibilitychange", function () { if (!S.ctx) return; if (document.hidden) S.ctx.suspend(); else if (S.on) S.ctx.resume(); });
+
+layout();
+requestAnimationFrame(frame);
+})();
+</script>

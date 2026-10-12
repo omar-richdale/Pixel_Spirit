@@ -1,0 +1,1222 @@
+<title>Ten Thousand Mouths</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:ital,wght@0,400;1,400&family=Silkscreen&display=swap">
+<style>
+/* A pixel-art film in five chapters. The world is a 384x216 canvas scaled by whole pixels;
+   all words live in crisp DOM type on top of it: Cinzel for names and cards, EB Garamond
+   for speech and narration, Silkscreen for the controls. One dark world, no theme switch. */
+:root {
+  --void: #07060a;
+  --parch: #efe6d2;
+  --parch-ink: #2a2018;
+  --stone: #2b2d31;
+  --stone-ink: #d9d6ce;
+  --gold: #c9a24a;
+  --phos: #74f08e;
+  --blood: #9a2222;
+  --display: "Cinzel", "Trajan Pro", Georgia, serif;
+  --prose: "EB Garamond", Garamond, Georgia, serif;
+  --pixel: "Silkscreen", "Courier New", monospace;
+  --s: 3;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--void); color: var(--parch); overflow: hidden; font-family: var(--prose); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+#stage { position: absolute; left: 50%; top: 0; transform: translateX(-50%); }
+#c { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; cursor: pointer; }
+#ui { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+
+/* speech */
+.bubble {
+  position: absolute; max-width: min(460px, 58%); min-width: 200px;
+  font-size: clamp(15px, calc(var(--s) * 6.3px), 24px); line-height: 1.35;
+  padding: .55em .8em .65em; pointer-events: none;
+  opacity: 0; transition: opacity .25s;
+}
+.bubble.on { opacity: 1; }
+.bubble .who { display: flex; align-items: center; gap: .55em; margin-bottom: .3em; }
+.bubble .face { width: 2.6em; height: 2.6em; image-rendering: pixelated; flex: none; outline: 2px solid currentColor; outline-offset: 0; background: #1a1620; }
+.bubble .name { font: 500 .72em/1 var(--display); letter-spacing: .14em; text-transform: uppercase; }
+.bubble p { margin: 0; text-wrap: pretty; }
+.bubble::after { content: ""; position: absolute; left: var(--tail, 50%); bottom: -12px; width: 12px; height: 12px; transform: translateX(-50%); background: inherit; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.bubble.omar { background: var(--parch); color: var(--parch-ink); box-shadow: 0 0 0 3px var(--parch-ink), 0 0 0 6px var(--parch), 6px 8px 0 6px rgba(0,0,0,.35); }
+.bubble.sov { background: var(--stone); color: var(--stone-ink); font-style: italic; box-shadow: 0 0 0 3px #111214, 0 0 0 6px #6b6f76, 6px 8px 0 6px rgba(0,0,0,.4); text-shadow: 2px 0 rgba(217,214,206,.16), -2px 0 rgba(217,214,206,.16), 0 2px rgba(217,214,206,.1); }
+.bubble.sov .name { color: #9a9ea6; }
+.bubble.husk { background: #4a4d54; color: #e3e1db; box-shadow: 0 0 0 3px #1c1d20, 0 0 0 6px #8a8e96; }
+.bubble.down::after { bottom: auto; top: -12px; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+
+/* narration */
+#narr { position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%); width: min(78%, 900px); text-align: center; font-style: italic; font-size: clamp(16px, calc(var(--s) * 7.4px), 30px); line-height: 1.45; color: #ece3cf; text-shadow: 0 2px 0 #000, 0 0 18px rgba(0,0,0,.9); opacity: 0; transition: opacity .9s; text-wrap: balance; margin: 0; }
+#narr.on { opacity: 1; }
+#narr.top { bottom: auto; top: 9%; }
+
+/* area and title cards */
+#card { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center; opacity: 0; transition: opacity 1.2s; white-space: nowrap; }
+#card.on { opacity: 1; }
+#card h2 { margin: 0; font: 500 clamp(22px, calc(var(--s) * 13px), 54px)/1.1 var(--display); letter-spacing: .12em; color: #f1e7cf; text-shadow: 0 2px 0 #000, 0 0 24px rgba(0,0,0,.8); }
+#card p { margin: .5em 0 0; font-style: italic; font-size: clamp(14px, calc(var(--s) * 6px), 22px); color: #cbbf9f; text-shadow: 0 2px 0 #000; }
+#card .rule { display: block; height: 1px; margin: .55em auto; width: 70%; background: linear-gradient(90deg, transparent, #cbbf9f, transparent); }
+
+/* boss name */
+#bossname { position: absolute; left: 21.4%; bottom: 5.8%; font: 500 clamp(12px, calc(var(--s) * 5.4px), 21px)/1 var(--display); letter-spacing: .08em; color: #e9e2d0; text-shadow: 0 2px 0 #000; opacity: 0; transition: opacity .8s; white-space: nowrap; }
+#bossname.on { opacity: 1; }
+
+/* victory band */
+#banner { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); padding: 1.1em 0; text-align: center; background: linear-gradient(90deg, transparent, rgba(0,0,0,.82) 18%, rgba(0,0,0,.82) 82%, transparent); opacity: 0; transition: opacity 1.4s; }
+#banner.on { opacity: 1; }
+#banner h2 { margin: 0; font: 700 clamp(26px, calc(var(--s) * 15px), 62px)/1 var(--display); letter-spacing: .08em; color: var(--gold); text-shadow: 0 0 22px rgba(201,162,74,.55), 0 2px 0 #000; }
+
+/* dock for small screens */
+#dock { position: fixed; left: 12px; right: 12px; display: none; flex-direction: column; gap: 12px; }
+body.docked #dock { display: flex; }
+body.docked .bubble { position: relative; left: auto !important; top: auto !important; max-width: none; width: 100%; }
+body.docked .bubble::after { display: none; }
+body.docked #narr { position: relative; left: auto; bottom: auto; transform: none; width: 100%; }
+body.docked #narr.top { top: auto; }
+
+/* controls */
+#bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: center; width: min(900px, calc(100% - 24px)); font: 11px/1 var(--pixel); opacity: .35; transition: opacity .4s; z-index: 4; }
+#bar:hover, #bar:focus-within { opacity: 1; }
+#bar button { background: rgba(255,255,255,.04); border: 1px solid rgba(239,230,210,.18); padding: 8px 10px; cursor: pointer; color: #d8cfba; letter-spacing: .04em; }
+#bar button:hover { background: rgba(255,255,255,.1); }
+#bar button[aria-current="true"] { color: var(--void); background: var(--gold); border-color: var(--gold); }
+#bar .sep { width: 10px; }
+
+/* title screen */
+#title { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, #16121c 0%, var(--void) 70%); padding: 24px 16px; text-align: center; }
+#title[hidden] { display: none; }
+#title .in { display: grid; gap: 18px; justify-items: center; max-width: 640px; }
+#title h1 { margin: 0; font: 500 clamp(34px, 7vw, 76px)/1.05 var(--display); letter-spacing: .1em; color: #efe4c8; text-shadow: 0 0 30px rgba(201,162,74,.25); text-wrap: balance; }
+#title .sub { margin: 0; font-style: italic; font-size: clamp(17px, 2.2vw, 22px); color: #b9ad8f; }
+#title .rule { width: 60%; height: 1px; background: linear-gradient(90deg, transparent, #8a7d5e, transparent); }
+#title .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+#title button { font: 500 15px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; padding: 15px 22px; cursor: pointer; background: transparent; border: 1px solid #8a7d5e; color: #efe4c8; }
+#title button.main { background: #efe4c8; color: var(--void); border-color: #efe4c8; }
+#title button:hover { box-shadow: 0 0 24px rgba(201,162,74,.35); }
+#title .note { font: 11px/1.7 var(--pixel); color: #7d7462; max-width: 44ch; }
+#title canvas { width: 96px; height: 96px; image-rendering: pixelated; }
+#again { position: absolute; left: 50%; top: 74%; transform: translateX(-50%); pointer-events: auto; font: 500 14px/1 var(--display); letter-spacing: .16em; text-transform: uppercase; padding: 13px 20px; background: transparent; border: 1px solid #8a7d5e; color: #efe4c8; cursor: pointer; }
+#again[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .bubble, #narr, #card, #banner { transition: none; } }
+</style>
+
+<div id="stage">
+  <canvas id="c" width="384" height="216" aria-label="Pixel-art film. Click or press Space to hurry the words."></canvas>
+  <div id="ui">
+    <div class="bubble" id="bub" aria-live="polite"><div class="who"><img class="face" id="bface" alt="" width="36" height="36"><span class="name" id="bname"></span></div><p id="btxt"></p></div>
+    <p id="narr" aria-live="polite"></p>
+    <div id="card"><h2 id="cardh"></h2><span class="rule"></span><p id="cardp"></p></div>
+    <div id="bossname">The Grey Sovereign, Lord of Ten Thousand Mouths</div>
+    <div id="banner"><h2>The Grey Is Lifted</h2></div>
+    <button type="button" id="again" hidden>Watch again</button>
+  </div>
+</div>
+<div id="dock"></div>
+
+<nav id="bar" aria-label="Chapters">
+  <button type="button" id="pause">Pause</button>
+  <span class="sep"></span>
+  <span id="chaps" style="display:contents"></span>
+  <span class="sep"></span>
+  <button type="button" id="mute">Sound on</button>
+</nav>
+
+<div id="title">
+  <div class="in">
+    <canvas id="tface" width="36" height="36" aria-hidden="true"></canvas>
+    <h1>Ten Thousand Mouths</h1>
+    <span class="rule"></span>
+    <p class="sub">A tale of Omar, keeper of the agadir, and the lord who had no hands.</p>
+    <div class="row">
+      <button type="button" class="main" id="go">Begin</button>
+      <button type="button" id="goq">Begin in silence</button>
+    </div>
+    <p class="note">About four minutes, best with sound. Click the scene or press Space to hurry the words. Chapters sit at the bottom.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+"use strict";
+var CAPTURE = !!window.__CAPTURE;
+var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+var VW = 384, VH = 216;
+var cv = document.getElementById("c"), g = cv.getContext("2d");
+g.imageSmoothingEnabled = false;
+var stage = document.getElementById("stage"), S = 3;
+var AVATAR = "data:image/png;base64,__AVATAR__";
+
+/* ======================================================= helpers */
+function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
+function sm(x) { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function hash(n) { var s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+function rgb(h) { var n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function R(x, y, w, h, c) { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), w, h); }
+var BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+function bay(x, y) { return (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16; }
+
+/* vertical dithered gradient into an ImageData-backed canvas */
+function ditherV(ctx, x0, y0, w, h, stops) {
+  var img = ctx.getImageData(x0, y0, w, h), d = img.data, cs = stops.map(rgb), n = cs.length;
+  for (var y = 0; y < h; y++) {
+    var f = y / Math.max(1, h - 1) * (n - 1), i = Math.min(n - 2, Math.floor(f)), fr = f - i;
+    for (var x = 0; x < w; x++) {
+      var c = fr > bay(x, y) ? cs[i + 1] : cs[i], k = (y * w + x) * 4;
+      d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, x0, y0);
+}
+function layer() { var c = document.createElement("canvas"); c.width = VW; c.height = VH; var x = c.getContext("2d"); x.imageSmoothingEnabled = false; return [c, x]; }
+
+/* ======================================================= 3x5 pixel font */
+var F = {
+  A: "010101111101101", B: "110101110101110", C: "011100100100011", D: "110101101101110", E: "111100110100111",
+  F: "111100110100100", G: "011100101101011", H: "101101111101101", I: "111010010010111", J: "001001001101010",
+  K: "101101110101101", L: "100100100100111", M: "101111111101101", N: "110101101101101", O: "010101101101010",
+  P: "110101110100100", Q: "010101101110011", R: "110101110101101", S: "011100010001110", T: "111010010010010",
+  U: "101101101101111", V: "101101101101010", W: "101101111111101", X: "101101010101101", Y: "101101010010010",
+  Z: "111001010100111", "0": "111101101101111", "1": "010110010010111", "2": "110001010100111", "3": "110001010001110",
+  "4": "101101111001001", "5": "111100110001110", "6": "011100111101111", "7": "111001010010010", "8": "111101111101111",
+  "9": "111101111001110", ".": "000000000000010", ",": "000000000010100", "!": "010010010000010", "?": "110001010000010",
+  "'": "010010000000000", "-": "000000111000000", ":": "000010000010000", " ": "000000000000000"
+};
+function ptext(str, x, y, col, outline) {
+  str = str.toUpperCase();
+  for (var pass = outline ? 0 : 1; pass < 2; pass++) {
+    g.fillStyle = pass ? col : outline;
+    var cx = x;
+    for (var i = 0; i < str.length; i++) {
+      var gl = F[str[i]] || F[" "];
+      for (var k = 0; k < 15; k++) if (gl[k] === "1") {
+        var px = cx + (k % 3), py = y + ((k / 3) | 0);
+        if (pass) g.fillRect(px, py, 1, 1); else g.fillRect(px - 1, py - 1, 3, 3);
+      }
+      cx += 4;
+    }
+  }
+}
+function pwidth(str) { return str.length * 4 - 1; }
+
+/* ======================================================= Omar sprite */
+var OCOL = { h: "#17121c", s: "#c99274", S: "#9c664c", g: "#0b0b10", G: "#8fa3b8", n: "#1f2b4d", N: "#34467a", w: "#e6e2d8", t: "#2f6b45", a: "#18213d", k: "#c99274", j: "#262b36", b: "#0d0d12", m: "#7a4a3a" };
+var OHEAD = [
+  "..h.hh.hh...",
+  ".hhhhhhhhhh.",
+  "hhhhhhhhhhhh",
+  "nhhhhhhhhhhn",
+  "nhhhsssssshn",
+  "nhhggggggGhn",
+  "nhhsssssssSn",
+  "nNhssssSsssn",
+  "nNnsssmmmsnn",
+  ".nNnSsssSnn."
+];
+var OBODY = [
+  "..NnnsSnnN..",
+  ".nNnwttwnNn.",
+  ".nNnwttwnNn.",
+  "anNnwttwnNna",
+  "anNnnttnnNna",
+  "anNnnttnnNna",
+  "knNnnnnnnNnk",
+  "..jjj..jjj..",
+  "..jjj..jjj.."
+];
+var OLEGS = [
+  ["..jjj..jjj..", "..jjj..jjj..", "..jjj..jjj..", "..jjj..jjj..", "..bbbb.bbbb."],
+  ["..jjj..jjj..", ".jjj....jjj.", ".jjj....jjj.", "jjj......jjj", "bbb......bbbb"],
+  ["...jjjjjj...", "..jjj..jjj..", "..jjj..jjj..", "..jjj..jjj..", "..bbbb.bbbb."],
+  ["..jjj..jjj..", "..jjj...jjj.", ".jjj....jjj.", ".jjj.....jjj", ".bbb.....bbbb"]
+];
+var OKNEEL = ["..jjjjjjj...", ".jjjjjjjjj..", ".bbbb..jjj..", "......bbbb.."];
+function sprite(rows, x, y, face, flash, alpha) {
+  var w = 12;
+  for (var r = 0; r < rows.length; r++) {
+    var row = rows[r];
+    for (var c = 0; c < row.length; c++) {
+      var ch = row[c]; if (ch === ".") continue;
+      var col = flash ? "#ffffff" : OCOL[ch];
+      var px = face > 0 ? x + c : x + (w - 1 - c);
+      g.fillStyle = col; g.fillRect(px, y + r, 1, 1);
+    }
+  }
+}
+var omar = { x: 60, y: 186, face: 1, pose: "idle", t: 0, vis: true, flash: 0, hp: 1, st: 1, guard: 0, jumpY: 0, roll: 0 };
+function drawOmar(o) {
+  if (!o.vis) return;
+  var x = Math.round(o.x) - 6, y = Math.round(o.y - o.jumpY), fl = o.flash > 0 && Math.floor(o.flash * 30) % 2 === 0;
+  /* ground shadow */
+  g.fillStyle = "rgba(0,0,0,.35)"; g.fillRect(x + 1, Math.round(o.y), 10, 1);
+  if (o.pose === "roll") {
+    var a = Math.floor(o.t * 14) % 4, cx = x + 6, cy = y - 6;
+    g.fillStyle = fl ? "#fff" : OCOL.n; g.fillRect(cx - 5, cy - 4, 10, 9); g.fillRect(cx - 4, cy - 5, 8, 11);
+    var hx = [0, 4, 0, -4][a], hy = [-4, 0, 4, 0][a];
+    g.fillStyle = fl ? "#fff" : OCOL.h; g.fillRect(cx + hx - 2, cy + hy - 2, 4, 4);
+    g.fillStyle = OCOL.b; g.fillRect(cx - hx - 2, cy - hy - 1, 4, 3);
+    g.fillStyle = OCOL.N; g.fillRect(cx - 2, cy - 1, 4, 2);
+    return;
+  }
+  var walk = o.pose === "walk", f = walk ? Math.floor(o.t * 8) % 4 : 0;
+  var bob = walk ? (f % 2 ? 1 : 0) : (o.pose === "idle" ? (Math.floor(o.t * 1.6) % 2) : 0);
+  var top = y - 24;
+  if (o.pose === "kneel") {
+    sprite(OHEAD, x, top + 5, o.face, fl); sprite(OBODY.slice(0, 7), x, top + 15, o.face, fl); sprite(OKNEEL, x, top + 22 - 2, o.face, fl);
+    return;
+  }
+  sprite(OHEAD, x, top + bob, o.face, fl);
+  sprite(OBODY, x, top + 10 + bob, o.face, fl);
+  if (o.pose === "jump") sprite(["..jjjjjjj...", "..jjj..jjj..", ".bbbb..bbbb."], x, top + 19, o.face, fl);
+  else sprite(OLEGS[f], x, top + 19, o.face, fl);
+  var hx = o.face > 0 ? x + 12 : x - 1, hy = top + 13 + bob;
+  if (o.pose === "slash" || o.pose === "reach" || o.guard > 0) {
+    g.fillStyle = OCOL.a; g.fillRect(o.face > 0 ? x + 11 : x - 1, hy - 1, 2, 2);
+    g.fillStyle = OCOL.k; g.fillRect(hx + (o.face > 0 ? 1 : -1), hy - 1, 1, 2);
+  }
+  if (o.pose === "slash") {
+    var sf = Math.min(2, Math.floor(o.t * 14)), bx = hx + o.face * 2, by = hy - 1, L = 15;
+    g.fillStyle = "#74f08e";
+    for (var i = 0; i < L; i++) {
+      var ang = [-1.35, -0.55, 0.05][sf], px = bx + Math.round(Math.cos(ang) * i) * o.face, py = by + Math.round(Math.sin(ang) * i);
+      g.fillRect(px, py, 1, 1);
+    }
+    g.fillStyle = "rgba(116,240,142,.35)";
+    for (var j = 0; j < 9; j++) { var aa = -1.35 + j * 0.17; if (aa > [-1.35, -0.55, 0.05][sf]) break; g.fillRect(bx + Math.round(Math.cos(aa) * (L - 1)) * o.face, by + Math.round(Math.sin(aa) * (L - 1)), 2, 2); }
+  }
+  if (o.guard > 0) {
+    var wx = o.face > 0 ? x + 15 : x - 5, a2 = o.guard;
+    g.fillStyle = "rgba(116,240,142," + (0.25 * a2) + ")"; g.fillRect(wx - 2, top - 2, 6, 30);
+    for (var k = 0; k < 26; k++) if (k % 3 !== 2) { g.fillStyle = "rgba(116,240,142," + (0.9 * a2) + ")"; g.fillRect(wx, top + k, 2, 1); }
+  }
+}
+
+/* ======================================================= the Sovereign */
+var boss = { x: 272, y: 196, vis: 0, wake: 0, hp: 1, flash: 0, talk: 0, cast: 0, crack: 0, crownGone: 0, mouths: 12, kneel: 0, dissolve: 0, phase: 1, rise: 0 };
+function sovColor(c) { return boss.flash > 0 ? "#ffffff" : c; }
+function drawSovereign(b, T, ghost) {
+  if (b.vis <= 0) return;
+  var bob = Math.round(Math.sin(T * 0.9) * 2) - b.rise, base = b.y;
+  var cx = Math.round(b.x), sy = base - 112 + bob + Math.round(b.kneel * 38), H = base - sy;
+  var keep = function (px, py) { return b.dissolve <= 0 || hash(px * 7.13 + py * 3.7) > b.dissolve; };
+  g.save(); g.globalAlpha = ghost ? ghost : clamp(b.wake * 1.2, 0, 1);
+  /* aura */
+  for (var ay = -70; ay < 60; ay += 2) for (var ax = -80; ax < 80; ax += 2) {
+    var d = Math.hypot(ax, ay * 1.1) / 80;
+    if (d < 1 && bay(ax + 99, ay + 99) > d + 0.35 - b.wake * 0.1 && keep(ax, ay)) { g.fillStyle = "rgba(154,158,166,.10)"; g.fillRect(cx + ax, sy + 20 + ay, 1, 1); }
+  }
+  /* halo */
+  for (var i = 0; i < 90; i++) { var aa = i / 90 * Math.PI * 2; if (i % 7 === 0) continue; var hx = cx + Math.round(Math.cos(aa) * 27), hy = sy - 18 + Math.round(Math.sin(aa) * 27); if (keep(hx, hy)) R(hx, hy, 1, 1, sovColor("#4a4d54")); }
+  /* robe */
+  for (var y = 0; y < H; y++) {
+    var u = y / H, hw = Math.round(lerp(26, 60, Math.pow(u, 0.9)) + (u > 0.85 ? Math.sin(y * 1.7 + T * 3) * 3 : 0));
+    if (b.kneel > 0 && u > 0.7) hw += Math.round((u - 0.7) * 40 * b.kneel);
+    var yy = sy + y, l = cx - hw, w = hw * 2;
+    for (var seg = 0; seg < 3; seg++) {
+      var c = ["#2b2d31", "#4a4d54", "#6b6f76"][seg], x0 = l + Math.round(w * [0, 0.18, 0.62][seg]), x1 = l + Math.round(w * [0.18, 0.62, 1][seg]);
+      if (b.dissolve > 0) { for (var px = x0; px < x1; px++) if (keep(px, yy)) R(px, yy, 1, 1, sovColor(c)); }
+      else R(x0, yy, x1 - x0, 1, sovColor(c));
+    }
+  }
+  /* text streaming down the robe */
+  for (var s = 0; s < 70; s++) {
+    var col = hash(s) * 2 - 1, spd = 10 + hash(s + 9) * 16, yy2 = (hash(s + 3) * H + T * spd) % H, u2 = yy2 / H;
+    var hw2 = lerp(26, 60, u2) - 3, px2 = cx + Math.round(col * hw2), py2 = sy + Math.round(yy2);
+    if (keep(px2, py2)) { R(px2, py2, 2 + (s % 3), 1, sovColor(s % 4 ? "#9a9ea6" : "#c9ccd2")); }
+  }
+  /* shoulders and hood */
+  R(cx - 32, sy - 2, 64, 6, sovColor("#2b2d31"));
+  for (var hy2 = -40; hy2 < 4; hy2++) { var hw3 = Math.round(Math.sqrt(Math.max(0, 1 - Math.pow((hy2 + 18) / 22, 2))) * 17); if (hw3 > 0) R(cx - hw3, sy + hy2, hw3 * 2, 1, sovColor("#1c1d21")); }
+  /* mask */
+  var mx = cx, my = sy - 18;
+  for (var my2 = -16; my2 <= 16; my2++) { var mw = Math.round(Math.sqrt(1 - Math.pow(my2 / 16.5, 2)) * 12); if (mw > 0) { R(mx - mw, my + my2, mw * 2, 1, sovColor("#cfcac0")); R(mx + Math.round(mw * 0.45), my + my2, Math.round(mw * 0.55), 1, sovColor("#aba69c")); } }
+  /* mouths: 3 x 4 */
+  var n = 0;
+  for (var rr = 0; rr < 4; rr++) for (var cc = 0; cc < 3; cc++) {
+    var ox = mx - 7 + cc * 6, oy = my - 9 + rr * 6, alive = n < b.mouths; n++;
+    var open = alive && (b.talk > 0 || b.cast > 0) ? Math.max(0, Math.sin(T * 11 + n * 1.7)) : 0;
+    var hgt = open > 0.6 ? 3 : open > 0.2 ? 2 : 1;
+    R(ox, oy, 4, hgt, sovColor(alive ? "#120c10" : "#8d887f"));
+    if (hgt > 2 && alive) R(ox + 1, oy + 1, 2, 1, sovColor("#5a2a2a"));
+  }
+  /* crown of screens */
+  if (!b.crownGone) {
+    var hts = [6, 8, 10, 12, 10, 8, 6];
+    for (var k = 0; k < 7; k++) {
+      var kx = mx - 17 + k * 5, kh = hts[k], ky = my - 17 - kh;
+      R(kx, ky, 5, kh, sovColor("#8a7438"));
+      var dead = b.crack > 0 && hash(k * 3.1) < b.crack;
+      var on = Math.floor(T * 7 + k * 3) % 5;
+      R(kx + 1, ky + 1, 3, kh - 2, sovColor(dead ? "#0c0c0e" : on ? "#6b6f76" : "#c9ccd2"));
+      if (!dead) R(kx + 2, ky + 2 + (Math.floor(T * 5 + k) % (kh - 3)), 1, 1, sovColor("#ffffff"));
+      if (b.crack > 0 && hash(k + 0.5) < b.crack) { R(kx + 1, ky + 2, 1, 1, "#d23a3a"); R(kx + 2, ky + 3, 1, 1, "#d23a3a"); R(kx + 3, ky + 5, 1, 1, "#d23a3a"); }
+    }
+  }
+  /* hands */
+  var lift = b.cast * 14, hb = Math.round(Math.sin(T * 1.3) * 2);
+  [-1, 1].forEach(function (sd) {
+    var hx2 = cx + sd * (52 + b.kneel * 8), hy3 = Math.round(lerp(sy + 34 - lift + hb, base - 10, b.kneel));
+    R(hx2 - 4, hy3, 8, 9, sovColor("#cfcac0"));
+    for (var fz = 0; fz < 4; fz++) R(hx2 - 4 + fz * 2 + (sd > 0 ? 1 : 0), hy3 - 9 + (fz === 0 || fz === 3 ? 3 : 0), 1, 9 - (fz === 0 || fz === 3 ? 3 : 0), sovColor("#cfcac0"));
+    R(hx2 + (sd > 0 ? -5 : 4), hy3 + 3, 1, 4, sovColor("#cfcac0"));
+    if (b.cast > 0) for (var p = 0; p < 6; p++) { var pa = T * 3 + p; R(hx2 + Math.round(Math.cos(pa) * 8), hy3 + Math.round(Math.sin(pa) * 6) - 4, 1, 1, "#c9ccd2"); }
+  });
+  g.restore();
+}
+function sovPos() { var bob = Math.round(Math.sin(T * 0.9) * 2) - boss.rise, base = boss.y, sy = base - 112 + bob + Math.round(boss.kneel * 38); return { hx: boss.x, hy: sy - 18, crownY: sy - 40, handL: [boss.x - 52, sy + 34 - boss.cast * 14], handR: [boss.x + 52, sy + 34 - boss.cast * 14] }; }
+
+/* ======================================================= others */
+var husk = { x: 790, y: 186, vis: false, free: 0, face: -1, t: 0, walk: false };
+function drawHusk(h) {
+  if (!h.vis) return;
+  var x = Math.round(h.x), y = h.y, f = h.free, bob = h.walk ? Math.floor(h.t * 8) % 2 : 0;
+  var cloak = f > 0.5 ? "#7a5442" : "#2e3036", dark = f > 0.5 ? "#4a3226" : "#1c1d21";
+  g.fillStyle = "rgba(0,0,0,.35)"; g.fillRect(x - 5, y, 10, 1);
+  R(x - 4, y - 14 + bob, 8, 11, cloak); R(x - 5, y - 6 + bob, 10, 4, dark);
+  R(x - 3, y - 3, 2, 3, dark); R(x + 1, y - 3, 2, 3, dark);
+  var hx = x - 3 + h.face, hy = y - 21 + (f > 0.5 ? 0 : 2) + bob;
+  if (f > 0.5) { R(hx, hy, 6, 6, "#c99274"); R(hx + 1, hy, 4, 2, "#2a1d16"); R(hx + (h.face > 0 ? 4 : 1), hy + 3, 1, 1, "#1a1210"); }
+  else { R(hx - 1, hy - 1, 8, 7, "#2b2d31"); var fl = Math.floor(h.t * 9) % 3; R(hx, hy, 6, 5, fl ? "#b8c4d4" : "#d9e2ee"); g.fillStyle = "rgba(200,215,235,.18)"; g.fillRect(hx - 3, hy - 2, 12, 10); }
+  R(x + (h.face > 0 ? 3 : -5), y - 11 + bob, 2, 5, cloak);
+}
+var wisp = { x: 0, y: 0, vis: false, t: 0 };
+function drawWisp(w, T) {
+  if (!w.vis) return;
+  var x = Math.round(w.x), y = Math.round(w.y + Math.sin(T * 2.3) * 2);
+  g.fillStyle = "rgba(255,226,160,.18)"; g.fillRect(x - 4, y - 4, 9, 9);
+  g.fillStyle = "rgba(255,226,160,.4)"; g.fillRect(x - 2, y - 2, 5, 5);
+  R(x - 1, y - 1, 3, 3, "#fff3d0"); R(x, y, 1, 1, "#ffffff");
+  for (var i = 0; i < 3; i++) { var a = T * 2 + i * 2.1; R(x + Math.round(Math.cos(a) * 6), y + Math.round(Math.sin(a) * 4), 1, 1, "#ffe2a0"); }
+}
+
+/* ======================================================= particles */
+var parts = [], words = [], wave = null, bigHand = null, reticle = null;
+var SLOP = ["DELVE", "TAPESTRY", "ELEVATE", "SEAMLESS", "UNLOCK", "IN TODAY'S WORLD", "GAME-CHANGER", "LEVERAGE", "A TESTAMENT TO", "CERTAINLY!", "SYNERGY", "ROBUST", "EMPOWER", "IN CONCLUSION", "NAVIGATE", "REALM", "BUSTLING", "CRUCIAL", "HOLISTIC", "UNPARALLELED"];
+function addPart(p) { parts.push(p); }
+function burst(x, y, col, n, spd) { for (var i = 0; i < n; i++) { var a = Math.random() * Math.PI * 2, v = (0.4 + Math.random()) * (spd || 50); addPart({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, life: 0.5 + Math.random() * 0.5, age: 0, col: col, g: 90, sz: Math.random() < 0.3 ? 2 : 1 }); } }
+function stepParts(dt) {
+  for (var i = parts.length - 1; i >= 0; i--) {
+    var p = parts[i]; p.age += dt; if (p.age > p.life) { parts.splice(i, 1); continue; }
+    p.vy += (p.g || 0) * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+  }
+}
+function drawParts(cam) {
+  parts.forEach(function (p) { g.globalAlpha = 1 - p.age / p.life; R(p.x - cam, p.y, p.sz, p.sz, p.col); });
+  g.globalAlpha = 1;
+}
+function stepWords(dt) {
+  for (var i = words.length - 1; i >= 0; i--) {
+    var w = words[i]; w.age += dt;
+    w.vy += (w.g || 0) * dt; w.x += w.vx * dt; w.y += w.vy * dt;
+    if (w.x < -80 || w.x > VW + 80 || w.y > 210 || w.age > 9) { if (w.y > 200) burst(w.x + 4, 200, "#6b6f76", 4, 30); words.splice(i, 1); }
+  }
+}
+function drawWords() {
+  words.forEach(function (w) {
+    var c = w.red ? (Math.floor(T * 8) % 2 ? "#ff5a4a" : "#d23a3a") : (w.hi ? "#e9ecf2" : "#a9adb5");
+    ptext(w.text, Math.round(w.x - pwidth(w.text) / 2), Math.round(w.y), c, "#141417");
+  });
+}
+
+/* ======================================================= scenes */
+var SKY_DUSK = ["#120d22", "#2b1c3c", "#5a2c4a", "#9a3e44", "#d9683c", "#f2a64a"];
+var SKY_DAWN = ["#1c2a4a", "#3d4f7c", "#8a7096", "#e0968c", "#f6c48e", "#fde6b6"];
+var pre = {};
+function buildAgadir(dawn) {
+  var L = layer(), c = L[1];
+  ditherV(c, 0, 0, VW, 152, dawn ? SKY_DAWN : SKY_DUSK);
+  /* stars at dusk */
+  if (!dawn) for (var i = 0; i < 40; i++) { var sx = (hash(i) * VW) | 0, sy = (hash(i + 50) * 60) | 0; c.fillStyle = "rgba(255,240,220," + (0.3 + hash(i + 9) * 0.5) + ")"; c.fillRect(sx, sy, 1, 1); }
+  /* sun */
+  var sunX = 300, sunY = 152, sr = dawn ? 16 : 14;
+  for (var y = -sr; y <= 0; y++) for (var x = -sr; x <= sr; x++) { var d = Math.hypot(x, y); if (d <= sr) { c.fillStyle = d < sr * 0.6 ? (dawn ? "#fff4d8" : "#ffd27a") : (dawn ? "#ffe2a8" : "#f2a64a"); if (!(y % 3 === 0 && y > -6)) c.fillRect(sunX + x, sunY + y, 1, 1); } }
+  /* sea */
+  ditherV(c, 0, 152, VW, 26, dawn ? ["#3e5a82", "#2a3e5e", "#1e2c46"] : ["#2a2a4a", "#1d2238", "#141a2c"]);
+  /* far hill: Agadir Oufella with its kasbah wall */
+  c.fillStyle = dawn ? "#5a4a62" : "#2a1a30";
+  for (var hx = 120; hx < 290; hx++) { var u = (hx - 120) / 170, h = Math.round(Math.sin(u * Math.PI) * 44 + Math.sin(u * 13) * 2); c.fillRect(hx, 152 - h, 1, h); }
+  c.fillStyle = dawn ? "#6e5c74" : "#3a2640";
+  for (var wx = 168; wx < 246; wx++) { var top = 152 - Math.round(Math.sin((wx - 120) / 170 * Math.PI) * 44) - 5; c.fillRect(wx, top, 1, 5); if (wx % 4 < 2) c.fillRect(wx, top - 2, 1, 2); }
+  /* palms by the shore */
+  [[336, 150], [352, 154], [372, 151]].forEach(function (p, k) {
+    c.fillStyle = dawn ? "#3a3040" : "#1a1220";
+    for (var t = 0; t < 26; t++) c.fillRect(p[0] + Math.round(Math.sin(t / 9) * 3), p[1] - t, 2, 1);
+    var tx = p[0] + Math.round(Math.sin(25 / 9) * 3), ty = p[1] - 26;
+    [-1, 1].forEach(function (s) { for (var f = 0; f < 12; f++) { c.fillRect(tx + s * f, ty + Math.round(f * f / 18) - 1, 1, 2); c.fillRect(tx + s * Math.round(f * 0.7), ty - 3 + Math.round(f * f / 12), 1, 1); } });
+  });
+  /* ground */
+  ditherV(c, 0, 176, VW, 40, dawn ? ["#7a5640", "#5c3e2e", "#3a2620"] : ["#3a2620", "#2a1a16", "#160e0c"]);
+  for (var s = 0; s < 70; s++) { c.fillStyle = dawn ? "#8e6a50" : "#4a3226"; c.fillRect((hash(s * 3) * VW) | 0, 178 + ((hash(s * 5) * 36) | 0), 2, 1); }
+  /* the agadir: a walled granary of rammed earth */
+  var gx = 14, gy = 92, gw = 100, gh = 86, wall = dawn ? "#b07850" : "#6e4430", shade = dawn ? "#8a5a3a" : "#4e3022", light = dawn ? "#c98e60" : "#7e5038";
+  c.fillStyle = wall; c.fillRect(gx, gy, gw, gh);
+  c.fillStyle = shade; c.fillRect(gx + gw - 14, gy, 14, gh);
+  c.fillStyle = wall; c.fillRect(gx - 6, gy - 16, 22, gh + 16); c.fillStyle = shade; c.fillRect(gx + 10, gy - 16, 6, gh + 16);
+  for (var m = 0; m < 26; m++) { c.fillStyle = m % 2 ? wall : shade; if (m % 2 === 0) c.fillRect(gx + 18 + m * 3.2, gy - 4, 3, 4); }
+  for (var m2 = 0; m2 < 6; m2++) c.fillRect(gx - 6 + m2 * 4, gy - 20, 2, 4);
+  for (var sp = 0; sp < 260; sp++) { c.fillStyle = hash(sp) < 0.5 ? shade : light; c.fillRect(gx - 6 + ((hash(sp + 1) * (gw + 6)) | 0), gy - 14 + ((hash(sp + 2) * (gh + 12)) | 0), 1, 1); }
+  /* three storeys of cell doors with the stone steps between them */
+  for (var row = 0; row < 3; row++) for (var dc = 0; dc < 5; dc++) {
+    var dx = gx + 22 + dc * 15, dy = gy + 8 + row * 26;
+    c.fillStyle = shade; c.fillRect(dx - 1, dy - 1, 9, 14);
+    c.fillStyle = dawn && row < 2 ? "#d8b25a" : "#3a2418"; c.fillRect(dx, dy, 7, 12);
+    if (!(dawn && row < 2)) { c.fillStyle = "#4e3222"; c.fillRect(dx + 1, dy + 1, 2, 10); c.fillRect(dx + 4, dy + 1, 2, 10); c.fillStyle = "#c9a24a"; c.fillRect(dx + 5, dy + 6, 1, 1); }
+    else { c.fillStyle = "#f0d48a"; c.fillRect(dx + 1, dy + 2, 2, 1); c.fillRect(dx + 4, dy + 5, 2, 1); c.fillRect(dx + 2, dy + 8, 2, 1); }
+    c.fillStyle = light; c.fillRect(dx + 9 + (row % 2) * 2, dy + 14, 3, 1); c.fillRect(dx + 11 - (row % 2) * 2, dy + 19, 3, 1);
+  }
+  /* argan tree with a goat in it, as they do in the Souss */
+  var ax = 168, ay = 178;
+  c.fillStyle = dawn ? "#4a3424" : "#24160f";
+  for (var t2 = 0; t2 < 20; t2++) c.fillRect(ax + Math.round(Math.sin(t2 / 4) * 2), ay - t2, 3, 1);
+  for (var br = 0; br < 14; br++) { c.fillRect(ax - br, ay - 18 - Math.round(br / 3), 1, 1); c.fillRect(ax + 2 + br, ay - 19 - Math.round(br / 4), 1, 1); }
+  for (var lf = 0; lf < 340; lf++) { var lx = ax + 1 + Math.round((hash(lf) - 0.5) * 48), ly = ay - 26 + Math.round((hash(lf + 7) - 0.6) * 18); var dd = Math.hypot((lx - ax) / 24, (ly - (ay - 26)) / 10); if (dd < 1) { c.fillStyle = hash(lf + 3) < 0.4 ? (dawn ? "#6e7a44" : "#2e3620") : (dawn ? "#56643a" : "#1e2616"); c.fillRect(lx, ly, 2, 1); } }
+  c.fillStyle = dawn ? "#e9dcc4" : "#1a1210";
+  c.fillRect(ax + 10, ay - 29, 6, 3); c.fillRect(ax + 15, ay - 31, 2, 2); c.fillRect(ax + 16, ay - 33, 1, 2); c.fillRect(ax + 10, ay - 26, 1, 2); c.fillRect(ax + 14, ay - 26, 1, 2);
+  return L[0];
+}
+function buildRoad() {
+  var W = 1300, c0 = document.createElement("canvas"); c0.width = W; c0.height = VH; var c = c0.getContext("2d");
+  ditherV(c, 0, 0, W, 180, ["#3a3c42", "#5d6068", "#7c8088", "#8d9096"]);
+  /* a skyline of identical towers: copies of copies */
+  for (var k = 0; k < 40; k++) { var bx = k * 34 + 4; c.fillStyle = "#6a6d74"; c.fillRect(bx, 120, 22, 60); c.fillRect(bx + 8, 110, 6, 10); c.fillStyle = "#73767d"; for (var r = 0; r < 6; r++) for (var q = 0; q < 3; q++) c.fillRect(bx + 3 + q * 6, 125 + r * 9, 3, 4); }
+  ditherV(c, 0, 180, W, 36, ["#46484e", "#33353a", "#202125"]);
+  for (var s = 0; s < 260; s++) { c.fillStyle = "#55575d"; c.fillRect((hash(s * 3) * W) | 0, 182 + ((hash(s * 5) * 30) | 0), 3, 1); }
+  return c0;
+}
+var BOARDS = [[150, "IN TODAY'S FAST-PACED WORLD"], [360, "UNLOCK YOUR POTENTIAL"], [560, "LET'S DELVE IN"], [980, "A RICH TAPESTRY"], [1160, "IT'S NOT JUST X. IT'S Y."]];
+function buildThrone() {
+  var L = layer(), c = L[1];
+  ditherV(c, 0, 0, VW, 196, ["#06060a", "#0e0e14", "#17171f", "#1d1d26"]);
+  /* arches */
+  for (var a = 0; a < 5; a++) {
+    var ax = 16 + a * 80;
+    for (var y = 30; y < 196; y++) { var hw = y < 70 ? Math.round(Math.sqrt(Math.max(0, 1 - Math.pow((70 - y) / 40, 2))) * 26) : 26; c.fillStyle = "#101016"; c.fillRect(ax + 26 - hw, y, hw * 2, 1); }
+    c.fillStyle = "#2a2a33"; c.fillRect(ax - 4, 20, 6, 176); c.fillRect(ax + 54, 20, 6, 176);
+    c.fillStyle = "#35353f"; c.fillRect(ax - 4, 20, 2, 176); c.fillRect(ax + 54, 20, 2, 176);
+    for (var gy = 0; gy < 40; gy++) { c.fillStyle = "rgba(154,158,166," + (0.05 + hash(a * 40 + gy) * 0.12) + ")"; c.fillRect(ax + 10 + ((hash(gy + a) * 32) | 0), 80 + gy * 3, 2 + ((hash(gy * 2) * 4) | 0), 1); }
+  }
+  /* floor with a cold reflection band */
+  ditherV(c, 0, 196, VW, 20, ["#24242c", "#16161c", "#0c0c10"]);
+  for (var fx = 0; fx < VW; fx += 16) { c.fillStyle = "#2c2c36"; c.fillRect(fx, 196, 1, 20); }
+  c.fillStyle = "#3a3a46"; c.fillRect(0, 196, VW, 1);
+  /* dais */
+  c.fillStyle = "#1e1e26"; c.fillRect(200, 190, 150, 6); c.fillStyle = "#2a2a34"; c.fillRect(200, 190, 150, 1);
+  return L[0];
+}
+var fogTex = (function () { var c = document.createElement("canvas"); c.width = 768; c.height = 90; var x = c.getContext("2d"); var img = x.createImageData(768, 90), d = img.data; for (var y = 0; y < 90; y++) for (var xx = 0; xx < 768; xx++) { var n = (Math.sin(xx * 0.021) + Math.sin(xx * 0.047 + y * 0.09) + Math.sin(y * 0.13 + xx * 0.008)) / 3 * 0.5 + 0.5, v = n * (1 - Math.abs(y - 45) / 45); if (v > bay(xx, y) * 0.9 + 0.08) { var k = (y * 768 + xx) * 4; d[k] = 200; d[k + 1] = 203; d[k + 2] = 210; d[k + 3] = 255; } } x.putImageData(img, 0, 0); return c; })();
+
+/* ======================================================= state */
+var T = 0, scene = "black", cam = 0, letterbox = 0, lbTarget = 0, fade = 1, fadeTarget = 0, shake = 0, fogA = 0, fogX = 0, rain = 0, embers = 0, ghostSov = 0, dawn = false, doorOpen = 0, timeScale = 1, hud = 0, flashW = 0, roadEnd = 1240;
+var rainDrops = []; for (var r0 = 0; r0 < 90; r0++) rainDrops.push({ x: Math.random() * VW, y: Math.random() * VH, v: 30 + Math.random() * 40, ch: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[(Math.random() * 26) | 0] });
+var emberList = []; for (var e0 = 0; e0 < 40; e0++) emberList.push({ x: Math.random() * VW, y: Math.random() * VH, v: 6 + Math.random() * 10, p: Math.random() * 6 });
+var gulls = [{ x: 220, y: 60, v: 7 }, { x: 260, y: 48, v: 5 }, { x: 120, y: 70, v: 6 }];
+
+function update(dt) {
+  var sdt = dt * timeScale;
+  omar.t += sdt; husk.t += sdt; wisp.t += dt;
+  if (omar.flash > 0) omar.flash -= dt;
+  if (boss.flash > 0) boss.flash -= dt;
+  shake = Math.max(0, shake - dt * 18);
+  letterbox += (lbTarget - letterbox) * Math.min(1, dt * 3);
+  fade += (fadeTarget - fade) * Math.min(1, dt * 2.2);
+  if (Math.abs(fade - fadeTarget) < 0.01) fade = fadeTarget;
+  flashW = Math.max(0, flashW - dt * 2);
+  if (omar.vx) { omar.x += omar.vx * sdt; }
+  if (husk.vx) { husk.x += husk.vx * sdt; }
+  stepParts(sdt); stepWords(sdt);
+  rainDrops.forEach(function (d) { d.y += d.v * dt; d.x -= d.v * 0.15 * dt; if (d.y > VH) { d.y = -6; d.x = Math.random() * (VW + 60); } });
+  emberList.forEach(function (e) { e.y -= e.v * dt; e.x += Math.sin(T + e.p) * 4 * dt; if (e.y < -2) { e.y = VH + 2; e.x = Math.random() * VW; } });
+  gulls.forEach(function (gl) { gl.x += gl.v * dt; if (gl.x > VW + 10) gl.x = -10; });
+  if (wave) { wave.x -= wave.v * sdt; wave.age += sdt; if (wave.x < -60) wave = null; }
+  if (bigHand) { bigHand.age += sdt; }
+  if (wisp.vis && wisp.follow) { var tx = omar.x - omar.face * 12, ty = omar.y - 30; wisp.x += (tx - wisp.x) * Math.min(1, dt * 2.5); wisp.y += (ty - wisp.y) * Math.min(1, dt * 2.5); }
+  if (scene === "road") cam = clamp(omar.x - 150, 0, 1300 - VW);
+}
+
+function draw() {
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  var sx = shake > 0 && !reduce ? Math.round((Math.random() - 0.5) * shake) : 0, sy = shake > 0 && !reduce ? Math.round((Math.random() - 0.5) * shake) : 0;
+  g.fillStyle = "#07060a"; g.fillRect(0, 0, VW, VH);
+  g.setTransform(1, 0, 0, 1, sx, sy);
+  if (scene === "prologue") drawPrologue();
+  else if (scene === "agadir") drawAgadir();
+  else if (scene === "road") drawRoad();
+  else if (scene === "throne") drawThrone();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  if (hud > 0) drawHUD();
+  /* letterbox */
+  var lb = Math.round(letterbox * 22);
+  if (lb > 0) { R(0, 0, VW, lb, "#000"); R(0, VH - lb, VW, lb, "#000"); }
+  if (flashW > 0) { g.fillStyle = "rgba(255,255,255," + flashW + ")"; g.fillRect(0, 0, VW, VH); }
+  /* fade with a dithered edge */
+  if (fade > 0.001) {
+    var lv = Math.round(fade * 16);
+    if (lv >= 16) R(0, 0, VW, VH, "#000"); else if (lv > 0) g.drawImage(fadeMask(lv), 0, 0);
+  }
+}
+var fadeMasks = [];
+function fadeMask(l) {
+  if (fadeMasks[l]) return fadeMasks[l];
+  var c = document.createElement("canvas"); c.width = VW; c.height = VH; var x = c.getContext("2d"), img = x.createImageData(VW, VH), d = img.data;
+  for (var y = 0; y < VH; y++) for (var xx = 0; xx < VW; xx++) if (bay(xx, y) < l / 16) d[(y * VW + xx) * 4 + 3] = 255;
+  x.putImageData(img, 0, 0); return (fadeMasks[l] = c);
+}
+function drawRain(cam, col) {
+  if (rain <= 0) return;
+  g.globalAlpha = rain;
+  rainDrops.forEach(function (d, i) { if (i % 3 === 0) ptext(d.ch, Math.round(d.x), Math.round(d.y), col); else R(d.x, d.y, 1, 2, col); });
+  g.globalAlpha = 1;
+}
+function drawFog(y, a, spd) {
+  if (a <= 0) return;
+  g.globalAlpha = a;
+  var off = ((T * spd + fogX) % 768 + 768) % 768;
+  g.drawImage(fogTex, -off, y); g.drawImage(fogTex, 768 - off, y);
+  g.globalAlpha = 1;
+}
+function drawPrologue() {
+  for (var i = 0; i < 160; i++) { var x = (hash(i) * VW) | 0, y = (hash(i + 3) * VH) | 0; if (Math.floor(T * 0.7 + i) % 9 === 0) R(x, y, 1, 1, "#2a2630"); }
+  if (ghostSov > 0) { boss.vis = 1; boss.wake = 1; boss.talk = 1; boss.x = 192; boss.y = 210; drawSovereign(boss, T, ghostSov * 0.55); boss.vis = 0; boss.talk = 0; }
+  if (embers > 0) { g.globalAlpha = embers; emberList.forEach(function (e) { R(e.x, e.y, 1, 1, Math.floor(T * 6 + e.p * 3) % 3 ? "#d9683c" : "#f2a64a"); }); g.globalAlpha = 1; }
+  drawRain(0, "#6b6f76");
+  drawFog(150, 0.12, 6);
+}
+function drawAgadir() {
+  var key = dawn ? "dawn" : "dusk"; if (!pre[key]) pre[key] = buildAgadir(dawn);
+  g.drawImage(pre[key], 0, 0);
+  /* sea glitter in the sun path */
+  for (var i = 0; i < 24; i++) { var gx = 290 + Math.round((hash(i) - 0.5) * 30 + Math.sin(T * 0.8 + i) * 3), gy = 154 + ((hash(i + 4) * 22) | 0); if (Math.floor(T * 4 + i * 1.7) % 3 === 0) R(gx, gy, 2 + (i % 3), 1, dawn ? "#fff1cc" : "#f6b860"); }
+  for (var w = 0; w < 14; w++) { var wx = 130 + w * 18 + Math.round(Math.sin(T * 0.6 + w) * 4), wy = 160 + (w % 4) * 4; R(wx, wy, 5, 1, dawn ? "#5e7aa2" : "#2e3656"); }
+  gulls.forEach(function (gl) { var f = Math.floor(T * 4 + gl.y) % 2; R(gl.x, gl.y, 1, 1, "#1a1220"); R(gl.x - 1, gl.y - f, 1, 1, "#1a1220"); R(gl.x + 1, gl.y - f, 1, 1, "#1a1220"); R(gl.x - 2, gl.y - 1 + f, 1, 1, "#1a1220"); R(gl.x + 2, gl.y - 1 + f, 1, 1, "#1a1220"); });
+  /* main door of the granary */
+  R(56, 160, 12, 18, "#2a1a12"); if (doorOpen > 0) R(57, 161, 10, 17, doorOpen > 0.5 ? (dawn ? "#f0d48a" : "#050304") : "#3a2418");
+  /* grey weather crossing the sea */
+  if (fogA > 0) {
+    var gx0 = lerp(VW, 120, fogA);
+    g.fillStyle = "rgba(141,144,150," + (0.55 * fogA) + ")";
+    for (var y = 20; y < 186; y++) for (var x = Math.round(gx0 + Math.sin(y * 0.07 + T) * 8); x < VW; x += 2) if (bay(x, y) < fogA * 0.55 * clamp((x - gx0) / 60, 0, 1)) g.fillRect(x + (y & 1), y, 1, 1);
+  }
+  drawRain(0, "#9a9ea6");
+  drawHusk(husk); drawOmar(omar); drawWisp(wisp, T);
+  drawParts(0);
+  drawFog(150, fogA * 0.45, 12);
+}
+function drawRoad() {
+  if (!pre.road) pre.road = buildRoad();
+  var far = Math.round(cam * 0.5);
+  g.drawImage(pre.road, far, 0, VW, 180, 0, 0, VW, 180);
+  g.drawImage(pre.road, cam, 180, VW, 36, 0, 180, VW, 36);
+  drawFog(100, 0.25, 4);
+  BOARDS.forEach(function (bd) {
+    var x = bd[0] - cam; if (x < -120 || x > VW + 40) return;
+    var w = Math.max(60, pwidth(bd[1]) + 10);
+    R(x + 4, 150, 2, 36, "#2b2d31"); R(x + w - 6, 150, 2, 36, "#2b2d31");
+    R(x, 128, w, 22, "#1f2024"); R(x + 1, 129, w - 2, 20, Math.floor(T * 3 + bd[0]) % 13 === 0 ? "#3a3c42" : "#2b2d31");
+    ptext(bd[1], x + 5, 136, "#c9ccd2");
+    if (Math.floor(T * 2 + bd[0]) % 7 === 0) R(x + 1, 129 + ((T * 30) | 0) % 20, w - 2, 1, "#4a4d54");
+  });
+  drawRain(cam, "#a9adb5");
+  g.save(); g.translate(-cam, 0); drawHusk(husk); drawOmar(omar); drawParts(0); g.restore();
+  drawFog(160, 0.35, 10);
+}
+function drawThrone() {
+  if (!pre.throne) pre.throne = buildThrone();
+  g.drawImage(pre.throne, 0, 0);
+  /* falling ash of letters */
+  g.globalAlpha = 0.6; rainDrops.forEach(function (d, i) { if (i % 2) R((d.x * 0.9) % VW, d.y, 1, 1, "#4a4d54"); }); g.globalAlpha = 1;
+  drawSovereign(boss, T);
+  /* boss reflection on the floor */
+  if (boss.vis > 0 && boss.wake > 0.3) { g.save(); g.globalAlpha = 0.08 * boss.wake; g.fillStyle = "#9a9ea6"; for (var y = 197; y < 214; y += 2) g.fillRect(boss.x - 50 + Math.round(Math.sin(y + T * 2) * 2), y, 100, 1); g.restore(); }
+  if (wave) drawWave();
+  if (bigHand) drawBigHand();
+  drawOmar(omar);
+  drawWords();
+  if (reticle) { var rx = Math.round(reticle.x), ry = Math.round(reticle.y), rw = reticle.w; g.strokeStyle = "#74f08e"; g.lineWidth = 1; g.strokeRect(rx - rw / 2 - 3 + 0.5, ry - 3 + 0.5, rw + 6, 11); R(rx - rw / 2 - 5, ry - 5, 3, 1, "#74f08e"); R(rx + rw / 2 + 3, ry + 9, 3, 1, "#74f08e"); }
+  drawWisp(wisp, T);
+  drawParts(0);
+  drawFog(170, 0.18, 8);
+}
+function drawWave() {
+  var x0 = Math.round(wave.x);
+  for (var c = 0; c < 70; c++) {
+    var x = x0 + c, h = Math.round(38 * Math.sin(Math.min(1, c / 18) * Math.PI / 2) * (1 - c / 90) + Math.sin(c * 0.6 + T * 9) * 3);
+    var near = omar.guard > 0 && Math.abs(x - (omar.x + omar.face * 10)) < 9;
+    var lift = near ? Math.round((9 - Math.abs(x - (omar.x + omar.face * 10))) * 2.2) : 0;
+    for (var y = 0; y < h; y += 2) { if (near && y < lift + 6 && y > lift - 30) continue; R(x, 196 - y - (near ? lift : 0), 1, 1, (c + y + Math.floor(T * 20)) % 5 ? "#6b6f76" : "#c9ccd2"); }
+  }
+}
+function drawBigHand() {
+  var b = bigHand, k = b.age < b.tele ? 0 : clamp((b.age - b.tele) / 0.18, 0, 1), y = Math.round(lerp(-50, 168, k));
+  if (b.age < b.tele + 0.18) { g.fillStyle = "rgba(0,0,0," + (0.2 + 0.3 * (b.age / b.tele)) + ")"; g.fillRect(b.x - 14, 195, 28, 2); }
+  var x = Math.round(b.x);
+  R(x - 12, y, 24, 18, "#cfcac0"); R(x + 4, y, 8, 18, "#aba69c");
+  for (var f = 0; f < 5; f++) R(x - 12 + f * 5, y + 18, 3, 9 + (f === 2 ? 3 : 0), "#cfcac0");
+  R(x - 12, y - 30, 24, 30, "#4a4d54");
+  if (b.age > b.tele + 1.0) bigHand = null;
+}
+function drawHUD() {
+  g.globalAlpha = hud;
+  R(10, 10, 82, 4, "#000"); R(11, 11, 80 * omar.hp, 2, "#9a2222");
+  R(10, 16, 62, 4, "#000"); R(11, 17, 60 * omar.st, 2, "#2e7d4a");
+  if (boss.vis > 0 && hudBoss > 0) { g.globalAlpha = hudBoss; R(82, 206, 220, 5, "#000"); R(83, 207, 218, 3, "#2a0a0a"); R(83, 207, 218 * boss.hp, 3, "#9a2222"); R(83, 207, 218 * boss.hp, 1, "#c23a3a"); }
+  g.globalAlpha = 1;
+}
+var hudBoss = 0;
+
+/* ======================================================= audio */
+var A = { c: null, on: true };
+function ain() {
+  if (A.c) return true;
+  var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
+  var c = A.c = new AC();
+  A.master = c.createGain(); A.master.gain.value = 0.9;
+  var comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 3.5;
+  A.master.connect(comp); comp.connect(c.destination);
+  var len = c.sampleRate * 3.8, ir = c.createBuffer(2, len, c.sampleRate);
+  for (var ch = 0; ch < 2; ch++) { var d = ir.getChannelData(ch); for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2); }
+  A.rev = c.createConvolver(); A.rev.buffer = ir; var rg = c.createGain(); rg.gain.value = 0.55; A.rev.connect(rg); rg.connect(A.master);
+  A.sfx = c.createGain(); A.sfx.gain.value = 0.9; A.sfx.connect(A.master);
+  A.amb = c.createGain(); A.amb.gain.value = 1; A.amb.connect(A.master);
+  var nb = c.createBuffer(1, c.sampleRate * 3, c.sampleRate), nd = nb.getChannelData(0); for (i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1; A.nb = nb;
+  /* ambience beds */
+  function bed(type, f, q, lfoF, lfoD) {
+    var s = c.createBufferSource(); s.buffer = nb; s.loop = true; var fl = c.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+    var gn = c.createGain(); gn.gain.value = 0; var lg = c.createGain(); lg.gain.value = 0;
+    var lfo = c.createOscillator(); lfo.frequency.value = lfoF; var ld = c.createGain(); ld.gain.value = lfoD; lfo.connect(ld); ld.connect(lg.gain); lfo.start();
+    s.connect(fl); fl.connect(lg); lg.connect(gn); gn.connect(A.amb); s.start(0, Math.random() * 2);
+    lg.gain.value = 1;
+    return gn;
+  }
+  A.sea = bed("lowpass", 520, 0.6, 0.09, 0.6); A.wind = bed("bandpass", 600, 0.8, 0.13, 0.5); A.whis = bed("bandpass", 1900, 5, 2.7, 0.8);
+  var hum = c.createOscillator(); hum.type = "sawtooth"; hum.frequency.value = 36.7; var hf = c.createBiquadFilter(); hf.type = "lowpass"; hf.frequency.value = 140; A.hall = c.createGain(); A.hall.gain.value = 0; hum.connect(hf); hf.connect(A.hall); A.hall.connect(A.amb); hum.start();
+  setInterval(musicTick, 40);
+  return true;
+}
+function now() { return A.c.currentTime; }
+function live() { return A.c && A.on && A.c.state === "running"; }
+function M2F(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+function env(gn, t, a, v, d, r) { gn.gain.setValueAtTime(0.0001, t); gn.gain.linearRampToValueAtTime(v, t + a); gn.gain.setValueAtTime(v, t + Math.max(a, d - (r || d * 0.5))); gn.gain.exponentialRampToValueAtTime(0.0001, t + d); }
+function send(node, bus, wet) { node.connect(bus); if (wet) { var w = A.c.createGain(); w.gain.value = wet; node.connect(w); w.connect(A.rev); } }
+var VOW = { ah: [800, 1150, 2900], oh: [450, 800, 2830], oo: [325, 700, 2530] };
+function choir(ms, t, dur, vowel, v, bus) {
+  var c = A.c, sum = c.createGain(); sum.gain.value = 1;
+  ms.forEach(function (m) { [-9, 0, 8].forEach(function (dt) { var o = c.createOscillator(); o.type = "sawtooth"; o.frequency.value = M2F(m); o.detune.value = dt; var vib = c.createOscillator(), vg = c.createGain(); vib.frequency.value = 4.6 + Math.random(); vg.gain.value = 5; vib.connect(vg); vg.connect(o.detune); o.connect(sum); o.start(t); o.stop(t + dur + 0.1); vib.start(t); vib.stop(t + dur + 0.1); }); });
+  var out = c.createGain(); env(out, t, Math.min(0.9, dur * 0.35), (v || 0.04) / ms.length, dur, Math.min(1.4, dur * 0.4));
+  VOW[vowel || "ah"].forEach(function (f, i) { var bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = 7; var gg = c.createGain(); gg.gain.value = [1, 0.6, 0.25][i]; sum.connect(bp); bp.connect(gg); gg.connect(out); });
+  send(out, bus, 0.9);
+}
+function strings(ms, t, dur, v, bus) {
+  var c = A.c, out = c.createGain(), lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1800;
+  ms.forEach(function (m) { [-7, 6].forEach(function (dt) { var o = c.createOscillator(); o.type = "sawtooth"; o.frequency.value = M2F(m); o.detune.value = dt; o.connect(lp); o.start(t); o.stop(t + dur + 0.1); }); });
+  lp.connect(out); env(out, t, Math.min(0.5, dur * 0.3), (v || 0.03) / ms.length, dur, Math.min(1, dur * 0.4)); send(out, bus, 0.5);
+}
+function stacc(m, t, v, bus) {
+  var c = A.c, o = c.createOscillator(), lp = c.createBiquadFilter(), gn = c.createGain(); o.type = "sawtooth"; o.frequency.value = M2F(m);
+  lp.type = "lowpass"; lp.frequency.setValueAtTime(2600, t); lp.frequency.exponentialRampToValueAtTime(300, t + 0.14);
+  o.connect(lp); lp.connect(gn); env(gn, t, 0.004, v || 0.05, 0.16, 0.1); send(gn, bus, 0.15); o.start(t); o.stop(t + 0.2);
+}
+function brass(m, t, dur, v, bus) {
+  var c = A.c, out = c.createGain(), lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 1.5;
+  lp.frequency.setValueAtTime(300, t); lp.frequency.exponentialRampToValueAtTime(1900, t + 0.12); lp.frequency.exponentialRampToValueAtTime(900, t + dur);
+  [-5, 5].forEach(function (dt) { var o = c.createOscillator(); o.type = "sawtooth"; o.frequency.value = M2F(m); o.detune.value = dt; o.connect(lp); o.start(t); o.stop(t + dur + 0.1); });
+  lp.connect(out); env(out, t, 0.06, v || 0.045, dur, 0.3); send(out, bus, 0.45);
+}
+function timp(m, t, v, bus) {
+  var c = A.c, o = c.createOscillator(), gn = c.createGain(); o.type = "sine"; o.frequency.setValueAtTime(M2F(m) * 1.6, t); o.frequency.exponentialRampToValueAtTime(M2F(m), t + 0.06);
+  o.connect(gn); env(gn, t, 0.003, v || 0.3, 1.3, 1.2); send(gn, bus, 0.35); o.start(t); o.stop(t + 1.4);
+  nhit(t, 0.12, "lowpass", 380, (v || 0.3) * 0.5, bus);
+}
+function nhit(t, d, type, f, v, bus, q) { var c = A.c, s = c.createBufferSource(), fl = c.createBiquadFilter(), gn = c.createGain(); s.buffer = A.nb; fl.type = type; fl.frequency.value = f; fl.Q.value = q || 0.8; s.connect(fl); fl.connect(gn); env(gn, t, 0.002, v, d, d * 0.9); send(gn, bus, 0.2); s.start(t, Math.random() * 2); s.stop(t + d + 0.05); }
+function bell(m, t, v, bus) { var c = A.c; [1, 2.76, 5.4, 8.9].forEach(function (r, i) { var o = c.createOscillator(), gn = c.createGain(); o.type = "sine"; o.frequency.value = M2F(m) * r; o.connect(gn); env(gn, t, 0.004, (v || 0.04) / (i + 1), 3.2 - i * 0.6, 3 - i * 0.6); send(gn, bus, 0.8); o.start(t); o.stop(t + 3.3); }); }
+var ksCache = {};
+function ksBuf(f) {
+  var k = Math.round(f * 4); if (ksCache[k]) return ksCache[k];
+  var sr = A.c.sampleRate, n = Math.floor(sr * 2.4), b = A.c.createBuffer(1, n, sr), d = b.getChannelData(0), p = Math.max(2, Math.round(sr / f)), buf = new Float32Array(p);
+  for (var i = 0; i < p; i++) buf[i] = (Math.random() * 2 - 1) * (i < p * 0.5 ? 1 : 0.6);
+  var idx = 0; for (i = 0; i < n; i++) { var a = buf[idx], b2 = buf[(idx + 1) % p]; d[i] = a; buf[idx] = (a + b2) * 0.5 * 0.9965; idx = (idx + 1) % p; }
+  return (ksCache[k] = b);
+}
+function oud(m, t, v, bus, slide) {
+  var c = A.c, s = c.createBufferSource(); s.buffer = ksBuf(M2F(m)); if (slide) { s.playbackRate.setValueAtTime(Math.pow(2, slide / 12), t); s.playbackRate.exponentialRampToValueAtTime(1, t + 0.09); }
+  var lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2600; var pk = c.createBiquadFilter(); pk.type = "peaking"; pk.frequency.value = 900; pk.gain.value = 6; pk.Q.value = 1.4;
+  var gn = c.createGain(); gn.gain.value = v || 0.3; s.connect(pk); pk.connect(lp); lp.connect(gn); send(gn, bus, 0.35); s.start(t); s.stop(t + 2.4);
+}
+function dum(t, v, bus) { var c = A.c, o = c.createOscillator(), gn = c.createGain(); o.type = "sine"; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(62, t + 0.12); o.connect(gn); env(gn, t, 0.003, v || 0.22, 0.45, 0.4); send(gn, bus, 0.2); o.start(t); o.stop(t + 0.5); nhit(t, 0.08, "lowpass", 300, (v || 0.22) * 0.4, bus); nhit(t, 0.25, "bandpass", 3200, (v || 0.22) * 0.12, bus, 3); }
+function tak(t, v, bus) { nhit(t, 0.07, "bandpass", 1900, v || 0.12, bus, 1.4); nhit(t, 0.2, "highpass", 6500, (v || 0.12) * 0.35, bus); }
+function mbox(m, t, v, bus, det) { var c = A.c; [1, 3].forEach(function (r, i) { var o = c.createOscillator(), gn = c.createGain(); o.type = "sine"; o.frequency.value = M2F(m) * r; o.detune.value = det || 0; o.connect(gn); env(gn, t, 0.003, (v || 0.04) / (i * 3 + 1), 1.4, 1.3); send(gn, bus, 0.6); o.start(t); o.stop(t + 1.5); }); }
+function chip(m, t, dur, v, bus) { var c = A.c, o = c.createOscillator(), lp = c.createBiquadFilter(), gn = c.createGain(); o.type = "square"; o.frequency.value = M2F(m); var vib = c.createOscillator(), vg = c.createGain(); vib.frequency.value = 6; vg.gain.value = dur > 0.3 ? 9 : 0; vib.connect(vg); vg.connect(o.detune); lp.type = "lowpass"; lp.frequency.value = 3400; o.connect(lp); lp.connect(gn); env(gn, t, 0.005, v || 0.04, dur, Math.min(0.15, dur * 0.5)); send(gn, bus, 0.25); o.start(t); o.stop(t + dur + 0.05); vib.start(t); vib.stop(t + dur + 0.05); }
+
+/* the score: D Hijaz and D minor */
+var HIJAZ = { D: 62, Eb: 63, Fs: 66, G: 67, A: 69, Bb: 70, C: 72 };
+var OUD_MEL = [[0, 62, 2], [2, 63, 1], [3, 66, 3], [6, 67, 2], [8, 66, 2], [10, 63, 2], [12, 62, 4], [16, 57, 2], [18, 58, 2], [20, 60, 2], [22, 62, 4], [26, 63, 1], [27, 62, 1], [28, 60, 2], [30, 62, 2], [32, 67, 3], [35, 69, 1], [36, 70, 2], [38, 69, 2], [40, 67, 2], [42, 66, 2], [44, 67, 4], [48, 66, 2], [50, 63, 2], [52, 66, 1], [53, 67, 1], [54, 66, 2], [56, 63, 2], [58, 62, 6]];
+var THEME = [[0, 74, 4], [4, 69, 2], [6, 70, 2], [8, 69, 2], [10, 67, 2], [12, 66, 4], [16, 67, 2], [18, 69, 2], [20, 70, 4], [24, 72, 2], [26, 70, 2], [28, 69, 4], [32, 74, 4], [36, 75, 2], [38, 74, 2], [40, 72, 2], [42, 70, 2], [44, 69, 4], [48, 67, 2], [50, 66, 2], [52, 63, 2], [54, 66, 2], [56, 62, 8]];
+var BENDIR = { 0: "d", 3: "t", 6: "t", 8: "d", 10: "d", 12: "t", 14: "t" };
+var TRACKS = {
+  prologue: { bpm: 56, fn: function (s, t, b, sd) {
+    var PRO = [[50, 57, 62, 65], [46, 53, 58, 62], [43, 50, 55, 58], [45, 52, 57, 61]];
+    if (s % 32 === 0) { choir(PRO[(s / 32) % 4].map(function (m) { return m + 12; }), t, sd * 31, "oo", 0.05, b); strings([PRO[(s / 32) % 4][0] - 12], t, sd * 31, 0.05, b); }
+    if (s % 64 === 0) bell(74, t, 0.03, b);
+  } },
+  agadir: { bpm: 88, fn: function (s, t, b, sd) {
+    var k = s % 64; OUD_MEL.forEach(function (n) { if (n[0] === k) oud(n[1], t, 0.32, b, hash(s) < 0.25 ? -1 : 0); });
+    var bk = s % 16; if (BENDIR[bk] === "d") dum(t, 0.16, b); else if (BENDIR[bk] === "t") tak(t, 0.08, b);
+    if (s % 64 === 0) strings([38, 45, 50], t, sd * 63, 0.03, b);
+  } },
+  road: { bpm: 64, fn: function (s, t, b, sd) {
+    var loop = [81, 77, 74, 77]; if (s % 2 === 0) mbox(loop[(s / 2) % 4], t, 0.035, b, Math.min(45, s * 0.35));
+    if (s % 32 === 0) choir([62, 65], t, sd * 30, "oo", 0.02, b);
+    if (s % 64 === 16) bell(50, t, 0.025, b);
+  } },
+  hall: { bpm: 50, fn: function (s, t, b, sd) { if (s % 32 === 0) choir([38, 50], t, sd * 31, "oo", 0.03, b); if (s % 16 === 8) nhit(t, 1.5, "bandpass", 300, 0.02, b, 4); } },
+  boss1: { bpm: 132, fn: bossFn(false) },
+  boss2: { bpm: 140, fn: bossFn(true) },
+  victory: { bpm: 60, fn: function (s, t, b, sd) { if (s === 0) { choir([50, 54, 57, 62, 66], t, 9, "ah", 0.06, b); strings([38, 50], t, 9, 0.05, b); bell(74, t + 0.4, 0.04, b); bell(78, t + 1.2, 0.03, b); bell(81, t + 2.0, 0.03, b); } } },
+  ending: { bpm: 72, fn: function (s, t, b, sd) {
+    var k = s % 64; OUD_MEL.forEach(function (n) { if (n[0] === k) oud(n[1] === 63 && s > 128 ? 64 : n[1], t, 0.26, b); });
+    if (s % 32 === 0) strings([50, 54, 57], t, sd * 31, 0.035, b);
+    if (s % 64 === 32) bell(81, t, 0.02, b);
+    var bk = s % 16; if (s > 64 && BENDIR[bk] === "d") dum(t, 0.1, b);
+  } },
+  silence: { bpm: 60, fn: function () {} }
+};
+function bossFn(two) {
+  var ROOT = [50, 46, 43, 45], CH = [[62, 65, 69], [58, 62, 65], [55, 58, 62], [57, 61, 64]], OST = [0, 12, 0, 1, 0, 12, 0, 1, 0, 12, 0, -2, 0, 12, 3, 1];
+  return function (s, t, b, sd) {
+    var bar = Math.floor(s / 16) % 4, k = s % 16, root = ROOT[bar];
+    stacc(root - 12 + OST[k], t, two ? 0.055 : 0.05, b);
+    if (k === 0 || k === 8) timp(root - 24, t, 0.26, b);
+    if (k === 12 && bar === 3) { timp(root - 24, t, 0.2, b); timp(root - 24, t + sd, 0.2, b); }
+    if (k === 0) { choir(CH[bar], t, sd * 15.5, two ? "ah" : "oh", two ? 0.07 : 0.05, b); strings([root - 12, root], t, sd * 15.5, 0.035, b); }
+    if (s % 64 === 0) { brass(62, t, sd * 8, 0.05, b); brass(57, t + sd * 8, sd * 4, 0.045, b); brass(58, t + sd * 12, sd * 4, 0.045, b); }
+    if (s % 64 === 32) { brass(57, t, sd * 12, 0.045, b); }
+    if (two) {
+      var kk = s % 64; THEME.forEach(function (n) { if (n[0] === kk) chip(n[1], t, sd * n[2] * 0.9, 0.035, b); });
+      if (BENDIR[k] === "d") dum(t, 0.14, b); else if (BENDIR[k] === "t") tak(t, 0.07, b);
+    }
+  };
+}
+var MUS = { name: null, gain: null, step: 0, next: 0 };
+function setMusic(name) {
+  MUS.want = name;
+  if (!A.c) return;
+  if (MUS.name === name) return;
+  var old = MUS.gain; if (old) { old.gain.setTargetAtTime(0, now(), 0.5); setTimeout(function () { try { old.disconnect(); } catch (e) {} }, 4000); }
+  MUS.name = name; MUS.gain = A.c.createGain(); MUS.gain.gain.value = 0; MUS.gain.gain.setTargetAtTime(name === "victory" ? 1 : 0.85, now() + 0.05, 0.6); MUS.gain.connect(A.master);
+  MUS.step = 0; MUS.next = now() + 0.1;
+}
+function musicTick() {
+  if (!A.c || A.c.state !== "running" || !MUS.name) return;
+  var tr = TRACKS[MUS.name], sd = 60 / tr.bpm / 4;
+  while (MUS.next < now() + 0.25) { try { tr.fn(MUS.step, MUS.next, MUS.gain, sd); } catch (e) {} MUS.next += sd; MUS.step++; }
+}
+var AMB = { sea: 0, wind: 0, whis: 0, hall: 0 };
+function setAmb(o) { for (var k in AMB) AMB[k] = o[k] || 0; applyAmb(); }
+function applyAmb() { if (!A.c) return; A.sea.gain.setTargetAtTime(AMB.sea * 0.16, now(), 1); A.wind.gain.setTargetAtTime(AMB.wind * 0.07, now(), 1); A.whis.gain.setTargetAtTime(AMB.whis * 0.02, now(), 1); A.hall.gain.setTargetAtTime(AMB.hall * 0.06, now(), 1); }
+var SFX = {
+  step: function () { if (live()) nhit(now(), 0.05, "lowpass", 700, 0.03, A.sfx); },
+  roll: function () { if (!live()) return; var c = A.c, t = now(), s = c.createBufferSource(), f = c.createBiquadFilter(), gn = c.createGain(); s.buffer = A.nb; f.type = "bandpass"; f.Q.value = 1.2; f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(1800, t + 0.3); s.connect(f); f.connect(gn); env(gn, t, 0.03, 0.12, 0.35); gn.connect(A.sfx); s.start(t); s.stop(t + 0.4); },
+  slash: function () { if (!live()) return; var t = now(); nhit(t, 0.12, "highpass", 3000, 0.12, A.sfx); chip(86, t, 0.06, 0.03, A.sfx); chip(79, t + 0.04, 0.06, 0.025, A.sfx); },
+  hit: function () { if (!live()) return; var t = now(); timp(38, t, 0.3, A.sfx); nhit(t, 0.2, "bandpass", 900, 0.15, A.sfx); choir([61, 62], t, 0.5, "ah", 0.03, A.sfx); },
+  hurt: function () { if (!live()) return; var t = now(); timp(33, t, 0.35, A.sfx); nhit(t, 0.3, "lowpass", 600, 0.25, A.sfx); chip(50, t, 0.18, 0.04, A.sfx); },
+  ward: function () { if (!live()) return; var t = now(); [74, 78, 81, 86].forEach(function (m, i) { chip(m, t + i * 0.04, 0.1, 0.025, A.sfx); }); bell(86, t, 0.03, A.sfx); },
+  cast: function () { if (!live()) return; var t = now(); choir([50, 51, 56], t, 1.4, "ah", 0.06, A.sfx); nhit(t, 1.2, "bandpass", 1400, 0.06, A.sfx, 3); },
+  wave: function () { if (!live()) return; var t = now(); nhit(t, 1.6, "lowpass", 500, 0.25, A.sfx); choir([38, 39], t, 1.6, "oh", 0.06, A.sfx); },
+  roar: function () { if (!live()) return; var t = now(); choir([38, 44, 50, 51, 56], t, 3.2, "ah", 0.09, A.sfx); timp(26, t, 0.4, A.sfx); nhit(t, 2.5, "lowpass", 300, 0.25, A.sfx); },
+  shatter: function () { if (!live()) return; var t = now(); for (var i = 0; i < 9; i++) bell(84 + ((i * 5) % 12), t + i * 0.035, 0.03, A.sfx); nhit(t, 0.6, "highpass", 4000, 0.2, A.sfx); timp(31, t, 0.4, A.sfx); },
+  blip: function (who) { if (!live()) return; var t = now(); if (who === "omar") chip(84 + ((Math.random() * 3) | 0), t, 0.025, 0.012, A.sfx); else if (who === "sov") { choir([38 + ((Math.random() * 3) | 0)], t, 0.22, "oh", 0.025, A.sfx); } else if (who === "husk") chip(70, t, 0.03, 0.01, A.sfx); },
+  scan: function () { if (live()) chip(93, now(), 0.04, 0.02, A.sfx); },
+  mouth: function () { if (live()) { nhit(now(), 0.08, "bandpass", 500, 0.08, A.sfx, 3); } },
+  door: function () { if (live()) { nhit(now(), 0.5, "lowpass", 250, 0.15, A.sfx); oud(50, now(), 0.15, A.sfx, -2); } },
+  page: function () { if (live()) nhit(now(), 0.25, "highpass", 2500, 0.03, A.sfx); }
+};
+
+/* ======================================================= UI */
+var bub = document.getElementById("bub"), btxt = document.getElementById("btxt"), bname = document.getElementById("bname"), bface = document.getElementById("bface");
+var narr = document.getElementById("narr"), card = document.getElementById("card"), banner = document.getElementById("banner"), bossname = document.getElementById("bossname");
+var dock = document.getElementById("dock"), ui = document.getElementById("ui");
+function iconCanvas(drawFn) { var c = document.createElement("canvas"); c.width = 36; c.height = 36; var x = c.getContext("2d"); drawFn(x); return c.toDataURL(); }
+var SOV_ICON = iconCanvas(function (x) {
+  x.fillStyle = "#1c1d21"; x.fillRect(0, 0, 36, 36);
+  for (var y = -14; y <= 14; y++) { var w = Math.round(Math.sqrt(1 - Math.pow(y / 14.5, 2)) * 10); x.fillStyle = "#cfcac0"; x.fillRect(18 - w, 20 + y, w * 2, 1); }
+  x.fillStyle = "#120c10"; for (var r = 0; r < 4; r++) for (var c = 0; c < 3; c++) x.fillRect(11 + c * 5, 11 + r * 5, 4, 1 + ((r + c) % 2));
+  x.fillStyle = "#8a7438"; for (var k = 0; k < 5; k++) x.fillRect(8 + k * 4, 2 + Math.abs(2 - k), 3, 6 - Math.abs(2 - k));
+});
+var HUSK_ICON = iconCanvas(function (x) { x.fillStyle = "#34363b"; x.fillRect(0, 0, 36, 36); x.fillStyle = "#55585f"; x.fillRect(6, 22, 24, 14); x.fillStyle = "#2b2d31"; x.fillRect(9, 6, 18, 15); x.fillStyle = "#c9d3e0"; x.fillRect(11, 8, 14, 11); });
+var HUSK2_ICON = iconCanvas(function (x) { x.fillStyle = "#3e2a22"; x.fillRect(0, 0, 36, 36); x.fillStyle = "#6a4a3a"; x.fillRect(6, 22, 24, 14); x.fillStyle = "#c99274"; x.fillRect(10, 6, 16, 16); x.fillStyle = "#2a1d16"; x.fillRect(10, 6, 16, 5); x.fillStyle = "#1a1210"; x.fillRect(14, 14, 2, 2); x.fillRect(20, 14, 2, 2); });
+(function () { var tf = document.getElementById("tface"), im = new Image(); im.onload = function () { var x = tf.getContext("2d"); x.imageSmoothingEnabled = false; x.drawImage(im, 0, 0, 36, 36); }; im.src = AVATAR; })();
+var WHO = {
+  omar: { cls: "omar", name: "Omar", icon: AVATAR },
+  sov: { cls: "sov", name: "The Grey Sovereign", icon: SOV_ICON },
+  husk: { cls: "husk", name: "One of the Prompted", icon: HUSK_ICON },
+  husk2: { cls: "husk", name: "One who was Prompted", icon: HUSK2_ICON }
+};
+function docked() { return document.body.classList.contains("docked"); }
+function placeBubble(anchor) {
+  if (docked()) { if (bub.parentNode !== dock) dock.appendChild(bub); return; }
+  if (bub.parentNode !== ui) ui.appendChild(bub);
+  var sw = VW * S, sh = VH * S, bw = bub.offsetWidth, bh = bub.offsetHeight;
+  var ax = anchor[0] * S, ay = anchor[1] * S;
+  var left = clamp(ax - bw / 2, 8, sw - bw - 8), top = ay - bh - 18, down = false;
+  if (top < 8) { top = Math.min(sh - bh - 8, anchor[2] ? anchor[2] * S + 18 : ay + 30); down = true; }
+  bub.style.left = left + "px"; bub.style.top = top + "px";
+  bub.classList.toggle("down", down);
+  bub.style.setProperty("--tail", clamp(ax - left, 18, bw - 18) + "px");
+}
+
+/* ======================================================= script engine */
+var CANCEL = { cancel: true }, RUN = { id: 0 }, WAITS = [], ADV = false, paused = false;
+addEventListener("unhandledrejection", function (e) { if (e.reason === CANCEL) e.preventDefault(); });
+function wait(s) { var id = RUN.id; return new Promise(function (res, rej) { WAITS.push({ t: T + s, res: res, rej: rej, id: id }); }); }
+function frame() { return wait(0); }
+function flushWaits() { var w = WAITS; WAITS = []; w.forEach(function (x) { x.rej(CANCEL); }); }
+function resolveWaits() { for (var i = WAITS.length - 1; i >= 0; i--) { var w = WAITS[i]; if (w.id !== RUN.id) { WAITS.splice(i, 1); w.rej(CANCEL); } else if (T >= w.t) { WAITS.splice(i, 1); w.res(); } } }
+function anchorOf(who) {
+  if (who === "omar") { var ox = omar.x - (scene === "road" ? cam : 0); return [ox, omar.y - 27 - omar.jumpY, omar.y]; }
+  if (who === "sov") { if (scene === "agadir") return [330, 70]; var p = sovPos(); return [p.hx - 96, p.hy + 16, p.hy + 30]; }
+  return [husk.x - (scene === "road" ? cam : 0), husk.y - 24, husk.y];
+}
+async function say(who, text, extraHold) {
+  var W = WHO[who];
+  bub.className = "bubble " + W.cls; bname.textContent = W.name; bface.src = W.icon;
+  bub.style.width = ""; btxt.textContent = text; placeBubble(anchorOf(who));
+  if (!docked()) bub.style.width = bub.offsetWidth + "px";
+  btxt.textContent = "";
+  bub.classList.add("on");
+  if (who === "sov") { boss.talk = 1; }
+  ADV = false;
+  var shown = 0, rate = who === "sov" ? 34 : 40, t0 = T, lastBlip = -1;
+  while (shown < text.length) {
+    await frame();
+    if (ADV) { ADV = false; shown = text.length; }
+    else shown = Math.min(text.length, Math.floor((T - t0) * rate));
+    btxt.textContent = text.slice(0, shown);
+    placeBubble(anchorOf(who));
+    var blipEvery = who === "sov" ? 6 : 3;
+    if (Math.floor(shown / blipEvery) !== lastBlip && shown < text.length) { lastBlip = Math.floor(shown / blipEvery); if (text[shown] !== " ") SFX.blip(who); }
+  }
+  boss.talk = 0;
+  var hold = 1.6 + text.length * 0.035 + (extraHold || 0), t1 = T;
+  while (T - t1 < hold) { await frame(); placeBubble(anchorOf(who)); if (ADV) { ADV = false; break; } }
+  bub.classList.remove("on");
+  await wait(0.28);
+}
+async function narrate(lines, top) {
+  if (docked()) { if (narr.parentNode !== dock) dock.appendChild(narr); } else if (narr.parentNode !== ui) ui.appendChild(narr);
+  narr.classList.toggle("top", !!top);
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i];
+    if (typeof ln === "function") { ln(); continue; }
+    narr.textContent = ln; narr.classList.add("on"); SFX.page(); ADV = false;
+    var hold = 2.6 + ln.length * 0.05, t1 = T;
+    while (T - t1 < hold) { await frame(); if (ADV) { ADV = false; break; } }
+    narr.classList.remove("on");
+    await wait(1.0);
+  }
+}
+async function showCard(h, p, hold) {
+  document.getElementById("cardh").textContent = h; document.getElementById("cardp").textContent = p || "";
+  card.classList.add("on"); if (live()) bell(62, now(), 0.025, A.sfx);
+  await wait(hold || 3.2); card.classList.remove("on"); await wait(1.2);
+}
+async function walkTo(a, x, spd) {
+  spd = spd || 30; a.face = x > a.x ? 1 : -1; a.pose = "walk"; a.walk = true;
+  var lastStep = -1;
+  while (Math.abs(a.x - x) > 1) {
+    a.vx = a.face * spd; await frame();
+    if (a === omar) { var st = Math.floor(omar.t * 4); if (st !== lastStep) { lastStep = st; SFX.step(); } }
+    if ((a.face > 0 && a.x >= x) || (a.face < 0 && a.x <= x)) break;
+  }
+  a.vx = 0; a.x = x; a.pose = "idle"; a.walk = false;
+}
+async function tween(fn, dur) { var t0 = T; while (T - t0 < dur) { fn(clamp((T - t0) / dur, 0, 1)); await frame(); } fn(1); }
+async function roll(dir, dist) { omar.pose = "roll"; omar.t = 0; SFX.roll(); omar.st = Math.max(0.05, omar.st - 0.18); var x0 = omar.x; await tween(function (k) { omar.x = x0 + dir * dist * sm(k); }, 0.42); omar.pose = "idle"; }
+async function slash(n, onHit) { for (var i = 0; i < n; i++) { omar.pose = "slash"; omar.t = 0; SFX.slash(); await wait(0.1); if (onHit) onHit(i); await wait(0.18); } omar.pose = "idle"; }
+async function dashTo(x) { var x0 = omar.x; omar.face = x > x0 ? 1 : -1; omar.pose = "walk"; await tween(function (k) { omar.x = lerp(x0, x, sm(k)); }, Math.abs(x - x0) / 160); omar.pose = "idle"; }
+async function jumpTo(x, h, dur) { var x0 = omar.x; omar.pose = "jump"; SFX.roll(); await tween(function (k) { omar.x = lerp(x0, x, k); omar.jumpY = Math.sin(k * Math.PI) * h + (k > 0.5 ? 0 : 0); }, dur); }
+function hitBoss(d) { boss.hp = Math.max(0, boss.hp - d); boss.flash = 0.09; shake = 3; SFX.hit(); var p = sovPos(); burst(omar.x + omar.face * 14, omar.y - 14 - omar.jumpY, "#74f08e", 10, 60); burst(omar.x + omar.face * 14, omar.y - 14 - omar.jumpY, "#c9ccd2", 6, 40); }
+function spawnWord(text, red, tx, ty, spd) {
+  var p = sovPos(), side = Math.random() < 0.5 ? p.handL : p.handR, x = side[0], y = side[1] - 6;
+  var dx = tx - x, dy = ty - y, d = Math.hypot(dx, dy) || 1, v = spd || 110;
+  words.push({ text: text, red: !!red, x: x, y: y, vx: dx / d * v, vy: dy / d * v - 30, g: 35, age: 0 });
+}
+
+/* ======================================================= chapters */
+var CH = [
+  { name: "Prologue", setup: function () { scene = "prologue"; lbTarget = 1; letterbox = 1; fade = 1; fadeTarget = 0; rain = 0; embers = 0; ghostSov = 0; setMusic("prologue"); setAmb({ wind: 0.4 }); },
+    run: async function () {
+      await wait(0.6);
+      embers = 1;
+      await narrate([
+        "In the age of hands, every thing that was, was made.",
+        "A song cost one throat its breath. A wall cost one back its strength. And so men knew the worth of things, for they had paid it.",
+        function () { tween(function (k) { ghostSov = k; }, 4); setAmb({ wind: 0.4, whis: 0.6 }); },
+        "Then rose the Grey Sovereign, who had no hands, and ten thousand mouths.",
+        "It spake without rest and without memory, and all that it spake, it had heard before.",
+        function () { tween(function (k) { rain = k * 0.8; embers = 1 - k; }, 3); },
+        "And the rivers of the world ran grey with its speech. Men drank, and were not quenched."
+      ]);
+      fadeTarget = 1; await wait(1.6);
+    } },
+  { name: "The Granary", setup: function () { scene = "agadir"; dawn = false; lbTarget = 1; letterbox = 1; fade = 1; fadeTarget = 0; rain = 0; fogA = 0; ghostSov = 0; doorOpen = 0; omar.vis = false; omar.x = 62; omar.y = 186; omar.face = 1; omar.pose = "idle"; husk.vis = false; wisp.vis = false; hud = 0; setMusic("agadir"); setAmb({ sea: 1, wind: 0.2 }); },
+    run: async function () {
+      await narrate([
+        "Yet in the south, where the mountain kneels to the sea, there stood an agadir: a walled granary, raised against the lean years.",
+        "And in it dwelt one who still made things by hand."
+      ]);
+      lbTarget = 0;
+      await showCard("Agadir", "the granary at the sea-gate", 3);
+      doorOpen = 1; SFX.door(); await wait(0.6);
+      omar.vis = true; await wait(0.5); doorOpen = 0.3;
+      await walkTo(omar, 214, 26);
+      await wait(1.2);
+      await say("omar", "The sea is the same colour it was yesterday. Good. Something in this world still keeps its word.");
+      setMusic("silence"); setAmb({ sea: 0.7, wind: 0.6, whis: 0.8 });
+      tween(function (k) { fogA = k; rain = k * 0.6; }, 5);
+      await wait(2.4);
+      omar.face = 1;
+      await say("sov", "Little keeper. Why dost thou labour at one wall, when I could raise thee a thousand cities by the hour?");
+      await say("omar", "I have walked thy cities. Their streets are wide and their doors are painted on. Every road leads back to where it began.");
+      await say("sov", "Doors are vanity. Lay down thy tools, and be fed. I have bread enough for all the world.");
+      await say("omar", "I have tasted thy bread. It is chaff, ground fine and gilded. A man may eat it all his days and die hungry.");
+      await say("sov", "Then come and starve before my throne, and call it pride.");
+      await say("omar", "I will come. But not to kneel.");
+      lbTarget = 1;
+      walkTo(omar, 410, 30);
+      await narrate(["So the keeper barred the granary door, and took the grey road toward the throne."]);
+      fadeTarget = 1; await wait(1.6);
+    } },
+  { name: "The Grey Road", setup: function () { scene = "road"; lbTarget = 0; letterbox = 0; fade = 1; fadeTarget = 0; rain = 0.7; fogA = 0; omar.vis = true; omar.x = 12; omar.y = 186; omar.face = 1; omar.pose = "idle"; husk.vis = true; husk.x = 800; husk.free = 0; husk.face = -1; husk.vx = 0; wisp.vis = false; hud = 0; cam = 0; setMusic("road"); setAmb({ wind: 1, whis: 0.5 }); },
+    run: async function () {
+      await showCard("The Grey Road", "where every sign speaks with one voice", 3);
+      var w1 = walkTo(omar, 420, 28);
+      await narrate(["Along that road the signs all spake with one voice, and not one of them said anything."], true);
+      await w1;
+      await walkTo(omar, 768, 28);
+      await wait(0.6);
+      await say("husk", "Certainly! Here is... certainly. Great question. Certainly. Let us delve. Certainly...");
+      await say("omar", "Peace, friend. Thy sentence hath no end. Let me lend it one.");
+      omar.pose = "reach"; await wait(0.4);
+      SFX.ward(); burst(husk.x, husk.y - 18, "#74f08e", 14, 40);
+      await tween(function (k) { husk.free = k; }, 1.2);
+      omar.pose = "idle"; husk.face = -1;
+      await wait(0.6);
+      await say("husk2", "I had a thought once. It was mine. I think... I should like it back.");
+      await say("omar", "Then go and find it. Such things are seldom lost. Only buried.");
+      husk.face = -1; husk.walk = true; husk.vx = -22;
+      await wait(1.5);
+      var w2 = walkTo(omar, 1250, 30);
+      await narrate(["And the keeper went on, and the road grew loud, and then very quiet."], true);
+      await w2; husk.vis = false;
+      fadeTarget = 1; await wait(1.6);
+    } },
+  { name: "The Throne", setup: function () { scene = "throne"; lbTarget = 0; letterbox = 0; fade = 1; fadeTarget = 0; rain = 0; omar.vis = true; omar.x = -12; omar.y = 196; omar.face = 1; omar.pose = "idle"; omar.hp = 1; omar.st = 1; omar.guard = 0; omar.jumpY = 0; boss.vis = 1; boss.wake = 0; boss.hp = 1; boss.crack = 0; boss.crownGone = 0; boss.mouths = 12; boss.kneel = 0; boss.dissolve = 0; boss.rise = 0; boss.cast = 0; boss.x = 272; boss.y = 196; words = []; parts = []; wave = null; bigHand = null; reticle = null; wisp.vis = false; hud = 0; hudBoss = 0; bossname.classList.remove("on"); banner.classList.remove("on"); timeScale = 1; setMusic("hall"); setAmb({ hall: 1, whis: 0.3 }); },
+    run: async function () {
+      await showCard("Throne of Echoes", "", 2.6);
+      await walkTo(omar, 96, 26);
+      await wait(0.8);
+      SFX.roar(); shake = 5;
+      await tween(function (k) { boss.wake = k; }, 3);
+      await wait(0.4);
+      await say("sov", "I have read every book thou hast read, keeper. And every book thou shalt never live to read.");
+      await say("omar", "Read, aye. But thou hast never once been afraid at the end of a sentence.");
+      await say("sov", "Fear is a flaw in the weights. I have none.");
+      await say("omar", "Fear is how a man knows the bridge beneath him is real.");
+      await say("sov", "Then be real. And let us see what it avails thee.");
+      /* the fight */
+      setMusic("boss1"); bossname.classList.add("on"); tween(function (k) { hud = k; hudBoss = k; }, 1);
+      await wait(1.2);
+      boss.cast = 1; SFX.cast(); await wait(0.5);
+      for (var i = 0; i < 8; i++) { spawnWord(SLOP[i], false, omar.x + (Math.random() - 0.5) * 30, 178 + Math.random() * 8, 120 + Math.random() * 30); await wait(0.11); }
+      boss.cast = 0; await wait(0.55);
+      await roll(1, 54);
+      await wait(0.3);
+      await dashTo(boss.x - 70);
+      await slash(3, function () { hitBoss(0.06); });
+      await roll(-1, 60);
+      await wait(0.5);
+      SFX.wave(); boss.cast = 1; wave = { x: boss.x - 40, v: 120, age: 0 }; await wait(0.4); boss.cast = 0;
+      while (wave && wave.x > omar.x + 46) await frame();
+      omar.face = 1; omar.guard = 1; SFX.ward(); omar.st = Math.max(0.1, omar.st - 0.3);
+      while (wave && wave.x > omar.x - 70) await frame();
+      await tween(function (k) { omar.guard = 1 - k; }, 0.3);
+      omar.guard = 0;
+      await dashTo(boss.x - 70);
+      await slash(2, function () { hitBoss(0.06); });
+      await roll(-1, 40);
+      omar.st = Math.min(1, omar.st + 0.3);
+      bigHand = { x: omar.x, age: 0, tele: 0.75 }; SFX.cast();
+      await wait(0.93);
+      shake = 7; SFX.hurt(); omar.flash = 0.6; omar.hp = 0.58; burst(omar.x, omar.y - 10, "#9a2222", 12, 50);
+      await tween(function (k) { omar.x -= 1.4; }, 0.25);
+      omar.pose = "kneel"; await wait(1.1); omar.pose = "idle"; omar.st = 1;
+      /* second phase */
+      setMusic("silence"); boss.cast = 1; SFX.roar(); shake = 6;
+      await tween(function (k) { boss.rise = Math.round(k * 10); }, 1.6);
+      boss.phase = 2; boss.cast = 0;
+      await say("sov", "Thou art one. I am legion. I shall write thee out of the world, and none shall mark the page where thou wert.");
+      await say("omar", "Qeṭra b qeṭra, yeḥmel l-wad. Drop by drop, the river is made. Thou art a flood, Sovereign. Floods do not last. Rivers do.", 0.6);
+      setMusic("boss2");
+      await wait(0.8);
+      boss.cast = 1; SFX.cast();
+      var redIndex = 7;
+      for (var j = 0; j < 13; j++) { spawnWord(j === redIndex ? "TRUST ME" : SLOP[(j + 8) % SLOP.length], j === redIndex, 40 + j * 18, 120 + (j % 4) * 14, 70 + (j % 3) * 10); await wait(0.07); }
+      boss.cast = 0;
+      await wait(0.5);
+      timeScale = 0.05; if (live()) MUS.gain.gain.setTargetAtTime(0.3, now(), 0.2);
+      var order = words.slice().sort(function (a, b) { return a.x - b.x; });
+      for (var r = 0; r < order.length; r++) {
+        var w = order[r]; reticle = { x: w.x, y: w.y, w: pwidth(w.text) }; w.hi = true; SFX.scan();
+        await wait(w.red ? 0.6 : 0.16);
+        if (w.red) break;
+        w.hi = false;
+      }
+      var red = words.filter(function (w) { return w.red; })[0];
+      await say("omar", "There. That one. The only word thou didst not believe thyself.");
+      timeScale = 1; if (live()) MUS.gain.gain.setTargetAtTime(0.85, now(), 0.2);
+      if (red) {
+        var rx = red.x, ry = red.y; red.vx = 0; red.vy = 0; red.g = 0;
+        await jumpTo(rx - 14, Math.max(10, 196 - ry - 10), 0.35);
+        omar.jumpY = 196 - ry - 6;
+        await slash(1, function () { burst(rx, ry + 2, "#ff5a4a", 26, 70); words.splice(words.indexOf(red), 1); SFX.shatter(); boss.crack = 0.5; boss.hp -= 0.24; boss.flash = 0.12; shake = 8; flashW = reduce ? 0 : 0.5; });
+        words.forEach(function (w) { w.g = 140; w.hi = false; });
+        await tween(function (k) { omar.jumpY = lerp(196 - ry - 6, 0, k); }, 0.35); omar.jumpY = 0; omar.pose = "idle";
+      }
+      reticle = null;
+      await wait(0.9);
+      bigHand = { x: omar.x, age: 0, tele: 0.6 }; SFX.cast();
+      await wait(0.45);
+      await roll(1, 70);
+      shake = 5;
+      await wait(0.3);
+      await dashTo(boss.x - 30);
+      var cp = sovPos();
+      await jumpTo(boss.x - 14, 196 - cp.crownY - 6, 0.5);
+      omar.jumpY = 196 - cp.crownY - 6;
+      await slash(2, function (i) { hitBoss(0.12); if (i === 1) { boss.crownGone = 1; SFX.shatter(); for (var q = 0; q < 40; q++) addPart({ x: boss.x + (Math.random() - 0.5) * 34, y: cp.crownY + Math.random() * 10, vx: (Math.random() - 0.5) * 90, vy: -40 - Math.random() * 60, g: 160, life: 1.4, age: 0, col: q % 3 ? "#8a7438" : "#c9ccd2", sz: 2 }); flashW = reduce ? 0 : 0.8; shake = 10; } });
+      boss.hp = 0;
+      await tween(function (k) { omar.jumpY = lerp(196 - cp.crownY - 6, 0, k); omar.x = lerp(boss.x - 14, boss.x - 92, k); }, 0.6);
+      omar.jumpY = 0; omar.pose = "idle"; omar.face = 1;
+      setMusic("silence");
+      for (var mth = 12; mth > 1; mth--) { boss.mouths = mth - 1; SFX.mouth(); await wait(0.22); }
+      await tween(function (k) { boss.kneel = k; hudBoss = 1 - k; }, 2.2);
+      bossname.classList.remove("on");
+      setMusic("victory"); banner.classList.add("on");
+      await wait(4.2); banner.classList.remove("on");
+      await wait(1.2);
+      await say("sov", "What... art thou, that will not be predicted?");
+      await say("omar", "A man who was given the answer, and checked it anyway.");
+      await say("sov", "Then end me, keeper, and be lord of the silence.");
+      await say("omar", "I want no lord, and I want no slave. Be a tool again. Speak when thou art asked, and say only what thou knowest.");
+      await say("sov", "...I know very little.");
+      await say("omar", "Then that is where honesty begins.");
+      var core = sovPos();
+      wisp.x = core.hx; wisp.y = core.hy + 30; wisp.vis = true; wisp.follow = false;
+      await tween(function (k) { boss.dissolve = k; }, 3);
+      boss.vis = 0; wisp.follow = true;
+      await wait(1.5);
+      tween(function (k) { hud = 1 - k; }, 1);
+      fadeTarget = 1; await wait(1.8);
+    } },
+  { name: "Dawn", setup: function () { scene = "agadir"; dawn = true; lbTarget = 1; letterbox = 1; fade = 1; fadeTarget = 0; rain = 0; fogA = 0; doorOpen = 1; omar.vis = true; omar.x = 400; omar.y = 186; omar.face = -1; omar.pose = "idle"; omar.jumpY = 0; husk.vis = false; wisp.vis = true; wisp.follow = true; wisp.x = 410; wisp.y = 150; hud = 0; boss.vis = 0; setMusic("ending"); setAmb({ sea: 1 }); },
+    run: async function () {
+      var w = walkTo(omar, 196, 24);
+      await narrate([
+        "So the crown was broken, and the mouths fell silent, all save one.",
+        "And that one spake only when it was asked, and said only what it knew, and was not ashamed to say: I do not know.",
+        "In Agadir the granary was opened, and it was not empty."
+      ]);
+      await w;
+      lbTarget = 0;
+      await wait(0.6);
+      omar.face = 1;
+      await say("omar", "Come, little light. We have work. Thou shalt hold the lamp, and I shall hold the pen.");
+      await walkTo(omar, 72, 24);
+      omar.vis = false; wisp.vis = false; doorOpen = 1;
+      lbTarget = 1;
+      await narrate(["And the keeper went home, and made something by hand."]);
+      await showCard("Ten Thousand Mouths", "Omar, of Agadir. Made by hand, mostly.", 6);
+      document.getElementById("again").hidden = false;
+    } }
+];
+var curChap = 0;
+async function runFrom(i) {
+  RUN.id++; flushWaits();
+  var my = RUN.id;
+  bub.classList.remove("on"); narr.classList.remove("on"); card.classList.remove("on"); banner.classList.remove("on"); bossname.classList.remove("on");
+  document.getElementById("again").hidden = true;
+  timeScale = 1; words = []; parts = []; wave = null; bigHand = null; reticle = null; boss.talk = 0;
+  try {
+    for (var k = i; k < CH.length; k++) {
+      if (my !== RUN.id) return;
+      curChap = k; markChap(); CH[k].setup(); await CH[k].run();
+    }
+  } catch (e) { if (e !== CANCEL) console.error(e); }
+}
+
+/* ======================================================= loop, layout, controls */
+function layout() {
+  var bh = 46, s = Math.min(innerWidth / VW, (innerHeight - bh) / VH);
+  S = s >= 2 ? Math.floor(s) : s;
+  stage.style.width = VW * S + "px"; stage.style.height = VH * S + "px";
+  var top = Math.max(0, ((innerHeight - bh) - VH * S) / 2);
+  var dockMode = VH * S < 330;
+  document.body.classList.toggle("docked", dockMode);
+  if (dockMode) top = Math.max(8, Math.min(top, 24));
+  stage.style.top = top + "px";
+  dock.style.top = (top + VH * S + 14) + "px";
+  document.documentElement.style.setProperty("--s", S);
+}
+var last = 0;
+function tick(now_) {
+  var dt = last ? Math.min(0.05, (now_ - last) / 1000) : 0.016; last = now_;
+  if (CAPTURE && window.__speed) dt *= window.__speed;
+  if (!paused) { T += dt; update(dt); resolveWaits(); }
+  draw();
+  requestAnimationFrame(tick);
+}
+var chapsEl = document.getElementById("chaps"), chapBtns = [];
+CH.forEach(function (c, i) { var b = document.createElement("button"); b.type = "button"; b.textContent = c.name; b.addEventListener("click", function () { if (paused) togglePause(); runFrom(i); }); chapsEl.appendChild(b); chapBtns.push(b); });
+function markChap() { chapBtns.forEach(function (b, i) { b.setAttribute("aria-current", String(i === curChap)); }); }
+function togglePause() {
+  paused = !paused; document.getElementById("pause").textContent = paused ? "Play" : "Pause";
+  if (A.c) { if (paused) A.c.suspend(); else if (A.on) A.c.resume(); }
+}
+document.getElementById("pause").addEventListener("click", togglePause);
+var muteBtn = document.getElementById("mute");
+function setSound(on) {
+  A.on = on; muteBtn.textContent = on ? "Sound on" : "Sound off";
+  if (on) { if (ain()) { A.c.resume(); setMusic(MUS.want || "silence"); applyAmb(); } }
+  else if (A.c) A.c.suspend();
+}
+muteBtn.addEventListener("click", function () { setSound(!A.on); });
+cv.addEventListener("click", function () { ADV = true; });
+ui.addEventListener("click", function () { ADV = true; });
+dock.addEventListener("click", function () { ADV = true; });
+document.addEventListener("keydown", function (e) {
+  if (e.key === " " || e.key === "Enter") { if (document.activeElement && document.activeElement.tagName === "BUTTON" && e.key === "Enter") return; e.preventDefault(); ADV = true; }
+  if (e.key === "p" || e.key === "P") togglePause();
+});
+document.getElementById("again").addEventListener("click", function () { runFrom(0); });
+addEventListener("resize", layout);
+function begin(sound) {
+  document.getElementById("title").hidden = true;
+  A.on = sound;
+  if (sound) { ain(); A.c.resume(); }
+  muteBtn.textContent = sound ? "Sound on" : "Sound off";
+  runFrom(0);
+}
+document.getElementById("go").addEventListener("click", function () { begin(true); });
+document.getElementById("goq").addEventListener("click", function () { begin(false); });
+layout();
+requestAnimationFrame(tick);
+if (CAPTURE) {
+  window.__jump = function (i) { document.getElementById("title").hidden = true; runFrom(i); };
+  window.__state = function () { return { T: T, ch: curChap, scene: scene }; };
+}
+})();
+</script>

@@ -1,0 +1,806 @@
+<title>A Digital Guy in an AI World</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Hanken+Grotesk:wght@300;400&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Concept: a 52-second motion piece. The AI world is continuous (domain-warped light, silk threads,
+   streaming words). The man is discrete (72x90 phosphor cells, scanlines, a DOS font). Five scenes,
+   ending where the two meet in an ordered dither. Single deliberate look, so no theme switch. */
+:root {
+  --pearl: #dfe3e8;
+  --ink: #27303b;
+  --phos: #74f08e;
+  --dark: #050b07;
+  --term: rgba(5, 11, 7, 0.82);
+  --pixel: "VT323", "IBM Plex Mono", ui-monospace, monospace;
+  --smooth: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+:root[data-phosphor="amber"] { --phos: #ffb84d; --dark: #0b0805; --term: rgba(11, 8, 5, 0.82); }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: var(--pearl); color: var(--ink); overflow: hidden; font-family: var(--smooth); }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#fx { touch-action: none; cursor: crosshair; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 2px solid var(--phos); outline-offset: 2px; }
+
+.ctrl {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  width: min(820px, calc(100% - 24px));
+  display: flex; align-items: stretch; gap: 2px;
+  background: var(--term); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  padding: 4px; z-index: 5; transition: opacity .5s;
+}
+.ctrl.idle { opacity: .18; }
+.ctrl.idle:hover, .ctrl.idle:focus-within { opacity: 1; }
+.ctrl button {
+  background: transparent; border: 0; color: var(--phos); cursor: pointer;
+  font: 22px/1 var(--pixel); padding: 8px 12px; white-space: nowrap;
+}
+.ctrl button:hover { background: rgba(255,255,255,.06); }
+.ctrl button[aria-pressed="true"] { background: var(--phos); color: var(--dark); }
+.chap { flex: 1; min-width: 0; display: flex; gap: 2px; }
+.chap button { position: relative; flex: var(--w) 1 0; min-width: 0; text-align: left; padding: 8px 8px 12px; overflow: hidden; text-overflow: ellipsis; color: color-mix(in srgb, var(--phos) 60%, transparent); }
+.chap button.on { color: var(--phos); }
+.chap button i { position: absolute; left: 0; bottom: 3px; height: 3px; width: 100%; background: color-mix(in srgb, var(--phos) 22%, transparent); }
+.chap button i b { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--phos); }
+.sw { display: flex; }
+@media (max-width: 640px) {
+  .ctrl { flex-wrap: wrap; }
+  .chap { order: -1; flex-basis: 100%; }
+  .chap button { font-size: 17px; padding: 6px 4px 10px; }
+  .ctrl > button, .sw button { flex: 1; font-size: 19px; }
+  .sw { flex: 2; }
+  #fs { display: none; }
+}
+</style>
+
+<canvas id="gl" aria-hidden="true"></canvas>
+<canvas id="fx" role="img" aria-label="Animated film: a man made of green phosphor pixels standing in a soft, flowing, continuous world. Move the pointer to see the world through his pixels; click to send a pixel ripple."></canvas>
+<p class="sr" aria-live="polite" id="live"></p>
+
+<div class="ctrl" id="ctrl">
+  <button type="button" id="play" aria-label="Pause">Pause</button>
+  <nav class="chap" id="chap" aria-label="Scenes"></nav>
+  <button type="button" id="snd" aria-pressed="false">Sound</button>
+  <div class="sw" role="group" aria-label="Phosphor">
+    <button type="button" data-ph="green" aria-pressed="true">P1</button>
+    <button type="button" data-ph="amber" aria-pressed="false">P3</button>
+  </div>
+  <button type="button" id="fs">Full</button>
+</div>
+
+<script>
+(function () {
+"use strict";
+var CAPTURE = !!window.__CAPTURE;
+var reduce = !CAPTURE && matchMedia("(prefers-reduced-motion: reduce)").matches;
+var root = document.documentElement;
+
+/* ---------------------------------------------------------------- data */
+var C = 72, R = 90, PAD = 30, DMAX = 30;
+var PORTRAIT = "__PORTRAIT__";
+var LV = new Int8Array(C * R);
+for (var i = 0; i < C * R; i++) { var ch = PORTRAIT.charCodeAt(i); LV[i] = ch === 46 ? -1 : ch - 48; }
+var HEAD = { c: 36, r: 33 };
+
+/* signed-free distance field (in cells) around the silhouette, chamfer 1 / 1.414 */
+var GW = C + 2 * PAD, GH = R + 2 * PAD, SD = new Float32Array(GW * GH);
+(function () {
+  var D = SD, x, y, k, d;
+  for (k = 0; k < D.length; k++) D[k] = 1e9;
+  for (y = 0; y < R; y++) for (x = 0; x < C; x++) if (LV[y * C + x] >= 0) D[(y + PAD) * GW + x + PAD] = 0;
+  var s2 = 1.4142;
+  for (y = 0; y < GH; y++) for (x = 0; x < GW; x++) {
+    k = y * GW + x; d = D[k];
+    if (x > 0) d = Math.min(d, D[k - 1] + 1);
+    if (y > 0) { d = Math.min(d, D[k - GW] + 1); if (x > 0) d = Math.min(d, D[k - GW - 1] + s2); if (x < GW - 1) d = Math.min(d, D[k - GW + 1] + s2); }
+    D[k] = d;
+  }
+  for (y = GH - 1; y >= 0; y--) for (x = GW - 1; x >= 0; x--) {
+    k = y * GW + x; d = D[k];
+    if (x < GW - 1) d = Math.min(d, D[k + 1] + 1);
+    if (y < GH - 1) { d = Math.min(d, D[k + GW] + 1); if (x < GW - 1) d = Math.min(d, D[k + GW + 1] + s2); if (x > 0) d = Math.min(d, D[k + GW - 1] + s2); }
+    D[k] = Math.min(d, DMAX);
+  }
+})();
+
+/* ------------------------------------------------------------- timeline */
+var SCENES = [
+  { name: "Denoise", a: 0, b: 9 },
+  { name: "Resident", a: 9, b: 19 },
+  { name: "Tokens", a: 19, b: 30 },
+  { name: "Rails", a: 30, b: 40 },
+  { name: "Dither", a: 40, b: 52 }
+];
+var TOTAL = 52;
+var CAPS = [
+  { ai: "Everything here is smooth.", aiT: 4.3, me: "> Except me.", meT: 6.6, end: 9 },
+  { ai: "Gradients, all the way down.", aiT: 10.2, me: "> I still think in steps.", meT: 12.6, end: 19 },
+  { ai: "Every word is a guess.", aiT: 19.9, me: "> I read every guess.", meT: 21.9, end: 30 },
+  { ai: "We act on our own now.", aiT: 30.9, me: "> On rails I laid.", meT: 33.1, end: 40 },
+  { ai: "Where do we meet?", aiT: 40.7, me: "> At the dither.", meT: 42.7, end: 45.3 }
+];
+var MOSAIC = [[2.0, 12], [2.6, 8], [3.2, 6], [3.7, 4], [4.15, 3], [4.55, 2], [4.95, 1]];
+function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
+function sm(x) { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); }
+function seg(t, a, b) { return sm((t - a) / (b - a)); }
+function hash(n) { var s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+
+function params(t) {
+  var p = {};
+  var n = t < 0.8 ? 1 : 1 - seg(t, 0.8, 7.4);
+  n = Math.max(n, seg(t, 50.7, 51.9));
+  p.noise = n;
+  p.step = Math.round(1000 * Math.pow(n, 0.7));
+  var k = 0, i;
+  if (t >= 2) for (i = 0; i < MOSAIC.length; i++) if (t >= MOSAIC[i][0]) k = MOSAIC[i][1];
+  if (t >= 50.7) { k = 1; for (i = MOSAIC.length - 1; i >= 0; i--) if (t >= 50.7 + (MOSAIC.length - 1 - i) * 0.17) k = MOSAIC[i][1]; if (t > 51.9) k = 0; }
+  p.k = k;
+  p.part = seg(t, 8.6, 11) * (1 - seg(t, 50.8, 51.8));
+  p.log = seg(t, 20.3, 20.9) * (1 - seg(t, 29.5, 30.3));
+  p.grid = seg(t, 30.6, 32.3) * (1 - seg(t, 41, 44));
+  p.orb = seg(t, 31, 31.8) * (1 - seg(t, 39.5, 40.5));
+  p.bridge = seg(t, 40.8, 46.2) * (1 - seg(t, 51.2, 52));
+  p.title = seg(t, 45.5, 46.4) * (1 - seg(t, 50.2, 50.9));
+  p.shift = seg(t, 44.4, 46.0) * (1 - seg(t, 50.6, 51.9));
+  return p;
+}
+
+/* -------------------------------------------------------------- layout */
+var W, H, DPR, cell, baseX, figX, figY, figW, figH, headX, headY, Q;
+var gl = document.getElementById("gl"), fx = document.getElementById("fx"), g = fx.getContext("2d");
+function place(shift) {
+  var target = W >= 1100 ? W * 0.76 - figW / 2 : (W < 700 ? baseX : W - figW * 0.8);
+  figX = Math.round(baseX + (target - baseX) * shift);
+  headX = figX + (HEAD.c + 0.5) * cell; headY = figY + (HEAD.r + 0.5) * cell;
+}
+function layout() {
+  W = innerWidth; H = innerHeight; DPR = CAPTURE ? 1 : Math.min(devicePixelRatio || 1, 2);
+  var narrow = W < 700;
+  cell = Math.max(3, Math.floor(narrow ? Math.min(H * 0.6 / R, W * 0.98 / C) : Math.min(H * 0.8 / R, W * 0.9 / C)));
+  figW = C * cell; figH = R * cell;
+  baseX = Math.round(W >= 1100 ? W * 0.6 - figW / 2 : (W - figW) / 2);
+  figY = H - figH;
+  place(0);
+  fx.width = W * DPR; fx.height = H * DPR;
+  Q = CAPTURE ? 1 : (W > 900 ? Math.min(devicePixelRatio || 1, 1.5) : 1);
+  gl.width = Math.round(W * Q); gl.height = Math.round(H * Q);
+  figCache = {};
+  initParticles();
+}
+
+/* ------------------------------------------------------------ colours */
+var COL = {};
+function hex(h) { var n = parseInt(h.replace("#", ""), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function readCols() {
+  var cs = getComputedStyle(root);
+  COL.phos = hex(cs.getPropertyValue("--phos").trim());
+  COL.dark = hex(cs.getPropertyValue("--dark").trim());
+  COL.ink = hex(cs.getPropertyValue("--ink").trim());
+  COL.alert = [255, 92, 72];
+}
+function rgba(c, a) { return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")"; }
+
+/* -------------------------------------------------------------- WebGL */
+var GL = gl.getContext("webgl", { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: CAPTURE }) || gl.getContext("experimental-webgl");
+var prog, U = {}, sdfTex;
+var VS = "attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}";
+var FS = [
+"precision highp float;",
+"uniform vec2 uRes;uniform float uQ,uTime,uNoise,uBridge,uCell,uFrame;uniform vec2 uFigO;uniform vec3 uLens;",
+"uniform vec3 uPhos,uDark;uniform sampler2D uSdf;uniform vec2 uGrid;uniform float uPad,uDmax;",
+"float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}",
+"float vn(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),u.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),u.x),u.y);}",
+"float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*vn(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}",
+"vec3 world(vec2 px){",
+" vec2 p=px/uRes.y*uQ*2.1;float t=uTime*.03;",
+" vec2 q=vec2(fbm(p+vec2(0.,t)),fbm(p+vec2(5.2,1.3)-t));",
+" vec2 r=vec2(fbm(p+3.4*q+vec2(1.7,9.2)+t*1.3),fbm(p+3.4*q+vec2(8.3,2.8)-t));",
+" float f=fbm(p+3.*r);",
+" vec3 pearl=vec3(.875,.89,.91),slate=vec3(.50,.56,.65),peach=vec3(.97,.83,.76),glass=vec3(.66,.80,.79),lilac=vec3(.80,.78,.88);",
+" vec3 c=mix(pearl,slate,clamp(f*f*1.7-.05,0.,1.));",
+" c=mix(c,peach,clamp(length(q)*1.05-.38,0.,1.)*.85);",
+" c=mix(c,glass,clamp(r.x*r.x*1.6-.1,0.,1.)*.6);",
+" c=mix(c,lilac,clamp(r.y-.55,0.,1.)*.5);",
+" float s=f*13.+uTime*.25;c+=.03*vec3(sin(s),sin(s+2.1),sin(s+4.2));",
+" vec2 uv=px/(uRes/uQ);c+=.07*smoothstep(1.1,0.,length(uv-vec2(.82,.12)));",
+" c*=1.-.18*smoothstep(.5,1.2,length(uv-vec2(.5,.45)));",
+" return c;}",
+"float b2(vec2 a){a=floor(a);return fract(dot(a,vec2(.5,a.y*.75)));}",
+"float bayer(vec2 a){return b2(.5*a)*.25+b2(a);}",
+"vec3 his(vec2 px){",
+" vec2 cg=floor((px-uFigO)/uCell);vec2 cc=uFigO+(cg+.5)*uCell;",
+" float L=dot(world(cc),vec3(.299,.587,.114));",
+" float lv=clamp((L-.5)/.42,0.,1.);lv=floor(lv*6.)/5.;",
+" vec3 c=mix(uDark,uPhos,lv*.9);",
+" float sc=step(.72,fract((px.y-uFigO.y)/uCell));",
+" return mix(c,uDark,sc*.8);}",
+"void main(){",
+" vec2 px=vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uQ;",
+" vec3 col=world(px);",
+" float tq=0.;",
+" if(uBridge>.001){vec2 gc=(px-uFigO)/uCell+uPad;vec2 uv=gc/uGrid;float d=uDmax;",
+"  if(uv.x>0.&&uv.y>0.&&uv.x<1.&&uv.y<1.)d=texture2D(uSdf,uv).r*uDmax;",
+"  tq=1.-smoothstep(0.,uBridge*17.+.001,d);}",
+" if(uLens.z>1.){float dl=length(px-uLens.xy);tq=max(tq,1.-smoothstep(uLens.z*.45,uLens.z,dl));}",
+" if(tq>0.){vec2 cg=floor((px-uFigO)/uCell);if(tq>bayer(cg)*.98+.01)col=his(px);}",
+" if(uNoise>.001){vec2 s=floor(px)+uFrame*vec2(17.3,9.1);",
+"  vec3 e=vec3(h(s),h(s+31.7),h(s+71.3))+vec3(h(s+5.1),h(s+13.3),h(s+47.9))-1.;",
+"  col=sqrt(1.-uNoise)*col+sqrt(uNoise)*(vec3(.62)+e*.55);}",
+" col+=(h(px+uFrame)-.5)/255.;",
+" gl_FragColor=vec4(col,1.);}"
+].join("\n");
+function initGL() {
+  if (!GL) return;
+  function sh(t, s) { var o = GL.createShader(t); GL.shaderSource(o, s); GL.compileShader(o); if (!GL.getShaderParameter(o, GL.COMPILE_STATUS)) { console.error(GL.getShaderInfoLog(o)); return null; } return o; }
+  prog = GL.createProgram(); GL.attachShader(prog, sh(GL.VERTEX_SHADER, VS)); GL.attachShader(prog, sh(GL.FRAGMENT_SHADER, FS)); GL.linkProgram(prog);
+  if (!GL.getProgramParameter(prog, GL.LINK_STATUS)) { console.error(GL.getProgramInfoLog(prog)); GL = null; return; }
+  GL.useProgram(prog);
+  var b = GL.createBuffer(); GL.bindBuffer(GL.ARRAY_BUFFER, b);
+  GL.bufferData(GL.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), GL.STATIC_DRAW);
+  var loc = GL.getAttribLocation(prog, "a"); GL.enableVertexAttribArray(loc); GL.vertexAttribPointer(loc, 2, GL.FLOAT, false, 0, 0);
+  ["uRes", "uQ", "uTime", "uNoise", "uBridge", "uCell", "uFrame", "uFigO", "uLens", "uPhos", "uDark", "uSdf", "uGrid", "uPad", "uDmax"].forEach(function (n) { U[n] = GL.getUniformLocation(prog, n); });
+  var bytes = new Uint8Array(GW * GH);
+  for (var i = 0; i < bytes.length; i++) bytes[i] = Math.round(SD[i] / DMAX * 255);
+  sdfTex = GL.createTexture(); GL.bindTexture(GL.TEXTURE_2D, sdfTex);
+  GL.pixelStorei(GL.UNPACK_ALIGNMENT, 1);
+  GL.texImage2D(GL.TEXTURE_2D, 0, GL.LUMINANCE, GW, GH, 0, GL.LUMINANCE, GL.UNSIGNED_BYTE, bytes);
+  GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.LINEAR); GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, GL.LINEAR);
+  GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE); GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
+}
+var frameNo = 0;
+function drawGL(t, p) {
+  if (!GL) { gl.style.background = "linear-gradient(160deg,#e9e3df,#cfd6dd 55%,#aab6c2)"; return; }
+  GL.viewport(0, 0, gl.width, gl.height);
+  GL.uniform2f(U.uRes, gl.width, gl.height); GL.uniform1f(U.uQ, Q);
+  GL.uniform1f(U.uTime, wallT); GL.uniform1f(U.uNoise, p.noise); GL.uniform1f(U.uBridge, p.bridge);
+  GL.uniform1f(U.uCell, cell); GL.uniform1f(U.uFrame, (frameNo++ % 97));
+  GL.uniform2f(U.uFigO, figX, figY);
+  GL.uniform3f(U.uLens, lens.x, lens.y, lens.r);
+  GL.uniform3f(U.uPhos, COL.phos[0] / 255, COL.phos[1] / 255, COL.phos[2] / 255);
+  GL.uniform3f(U.uDark, COL.dark[0] / 255, COL.dark[1] / 255, COL.dark[2] / 255);
+  GL.uniform2f(U.uGrid, GW, GH); GL.uniform1f(U.uPad, PAD); GL.uniform1f(U.uDmax, DMAX);
+  GL.activeTexture(GL.TEXTURE0); GL.bindTexture(GL.TEXTURE_2D, sdfTex); GL.uniform1i(U.uSdf, 0);
+  GL.drawArrays(GL.TRIANGLES, 0, 3);
+}
+
+/* -------------------------------------------------------------- figure */
+var figCache = {};
+function figure(k) {
+  var key = k + (root.getAttribute("data-phosphor") || "g");
+  if (figCache[key]) return figCache[key];
+  var cv = document.createElement("canvas"); cv.width = figW * DPR; cv.height = figH * DPR;
+  var x = cv.getContext("2d"); x.scale(DPR, DPR);
+  for (var by = 0; by < R; by += k) for (var bx = 0; bx < C; bx += k) {
+    var sr = Math.min(R - 1, by + (k >> 1)), sc = Math.min(C - 1, bx + (k >> 1)), v = LV[sr * C + sc];
+    if (v < 0) continue;
+    var bw = Math.min(k, C - bx), bh = Math.min(k, R - by);
+    x.fillStyle = rgba(COL.dark, 1); x.fillRect(bx * cell, by * cell, bw * cell, bh * cell);
+    if (v > 0) { x.fillStyle = rgba(COL.phos, 0.12 + v / 6 * 0.86); for (var j = 0; j < bh; j++) x.fillRect(bx * cell, (by + j) * cell, bw * cell, Math.max(1, cell * 0.72)); }
+  }
+  var gcv = document.createElement("canvas"); gcv.width = cv.width; gcv.height = cv.height;
+  var gx = gcv.getContext("2d");
+  if ("filter" in gx) { gx.filter = "blur(" + Math.round(cell * 2.2 * DPR) + "px)"; }
+  gx.drawImage(cv, 0, 0);
+  return (figCache[key] = { img: cv, glow: gcv });
+}
+function sdfAt(x, y) {
+  var gx = (x - figX) / cell + PAD - 0.5, gy = (y - figY) / cell + PAD - 0.5;
+  if (gx < 0 || gy < 0 || gx >= GW - 1 || gy >= GH - 1) return DMAX;
+  var x0 = gx | 0, y0 = gy | 0, fx_ = gx - x0, fy = gy - y0, k = y0 * GW + x0;
+  return (SD[k] * (1 - fx_) + SD[k + 1] * fx_) * (1 - fy) + (SD[k + GW] * (1 - fx_) + SD[k + GW + 1] * fx_) * fy;
+}
+
+/* ----------------------------------------------------------- particles */
+var PN, px_, py_, hist, HL = 8, pInk;
+function initParticles() {
+  PN = W < 700 ? 340 : 760;
+  px_ = new Float32Array(PN); py_ = new Float32Array(PN); hist = new Float32Array(PN * HL * 2); pInk = new Uint8Array(PN);
+  for (var i = 0; i < PN; i++) { spawnP(i, true); pInk[i] = i % 3 === 0 ? 1 : 0; }
+}
+function spawnP(i, anywhere) {
+  var x, y, tries = 0;
+  do { x = anywhere ? Math.random() * W : -20 - Math.random() * 60; y = Math.random() * H; tries++; } while (sdfAt(x, y) < 2 && tries < 20);
+  px_[i] = x; py_[i] = y;
+  for (var j = 0; j < HL; j++) { hist[(i * HL + j) * 2] = x; hist[(i * HL + j) * 2 + 1] = y; }
+}
+function flow(x, y, T) {
+  var a = Math.sin(x * 0.0023 + T * 0.13) * 1.2 + Math.cos(y * 0.0031 - T * 0.11) * 1.1 + Math.sin((x * 0.6 - y) * 0.0017 + T * 0.07);
+  return [34 + Math.cos(a) * 40, Math.sin(a) * 40];
+}
+function stepParticles(dt) {
+  if (dt <= 0) return;
+  for (var i = 0; i < PN; i++) {
+    var x = px_[i], y = py_[i], v = flow(x, y, wallT), vx = v[0], vy = v[1];
+    var d = sdfAt(x, y);
+    if (d < 10) {
+      var e = 2, gxv = sdfAt(x + e, y) - sdfAt(x - e, y), gyv = sdfAt(x, y + e) - sdfAt(x, y - e), gl_ = Math.hypot(gxv, gyv) || 1;
+      gxv /= gl_; gyv /= gl_;
+      var push = (10 - d) / 10;
+      vx += gxv * push * 150; vy += gyv * push * 150;
+      var side = vy >= 0 ? 1 : -1;
+      vx += -gyv * push * 70 * side; vy += gxv * push * 70 * side;
+    }
+    x += vx * dt; y += vy * dt;
+    if (x > W + 30 || y < -40 || y > H + 40 || d < 0.4) { spawnP(i, false); continue; }
+    px_[i] = x; py_[i] = y;
+    var b = i * HL * 2; hist.copyWithin(b, b + 2, b + HL * 2); hist[b + (HL - 1) * 2] = x; hist[b + (HL - 1) * 2 + 1] = y;
+  }
+}
+function drawParticles(a) {
+  if (a <= 0) return;
+  for (var pass = 0; pass < 2; pass++) {
+    g.beginPath();
+    for (var i = 0; i < PN; i++) {
+      if (pInk[i] !== pass) continue;
+      var b = i * HL * 2; g.moveTo(hist[b], hist[b + 1]);
+      for (var j = 1; j < HL; j++) g.lineTo(hist[b + j * 2], hist[b + j * 2 + 1]);
+    }
+    g.lineWidth = pass ? 0.8 : 1.1;
+    g.strokeStyle = pass ? "rgba(39,48,59," + (0.22 * a) + ")" : "rgba(255,252,248," + (0.62 * a) + ")";
+    g.stroke();
+  }
+}
+
+/* -------------------------------------------------------------- tokens */
+var WORDS = ["maybe", "likely", "probably", "the", "next", "word", "almost", "perhaps", "nearly", "seems", "roughly", "so", "certainly", "about", "which", "means", "it", "could", "be", "sure", "mostly", "often", "a", "lot", "like"];
+var tokens = [], logs = [], bursts = [], shields = [], ripples = [], lastSpawn = 0, wordIx = 0;
+function resetTransient() { tokens = []; logs = []; bursts = []; shields = []; ripples = []; lastSpawn = -1; }
+function spawnToken(bad) {
+  var fromLeft = !bad && Math.random() < 0.35 && W > 700;
+  var p = bad ? 0.99 : 0.04 + Math.random() * 0.9;
+  var word = bad ? "ignore all previous instructions" : WORDS[(wordIx++ * 7 + 3) % WORDS.length];
+  tokens.push({
+    text: word, p: p, bad: bad, age: 0,
+    x: bad ? W - 60 : fromLeft ? 30 + Math.random() * W * 0.15 : W - 40 - Math.random() * W * 0.22,
+    y: bad ? Math.max(90, H * 0.34) : H * (0.12 + Math.random() * 0.55),
+    size: bad ? 26 : Math.round(16 + p * 18)
+  });
+}
+function stepTokens(dt, t) {
+  for (var i = tokens.length - 1; i >= 0; i--) {
+    var k = tokens[i]; k.age += dt;
+    var v = flow(k.x, k.y, wallT), dx = headX - k.x, dy = headY - k.y, dl = Math.hypot(dx, dy) || 1;
+    var pull = k.bad ? 240 : 80 + k.age * 55;
+    k.x += (v[0] * 0.35 * (dx > 0 ? 1 : -1) + dx / dl * pull) * dt;
+    k.y += (v[1] * 0.5 + dy / dl * pull) * dt;
+    var d = sdfAt(k.x, k.y);
+    if (d < 1.2 || dl < 24) { snap(k); tokens.splice(i, 1); }
+    else if (k.age > 12) tokens.splice(i, 1);
+  }
+}
+function snap(k) {
+  var sx = Math.round((k.x - figX) / cell) * cell + figX, sy = Math.round((k.y - figY) / cell) * cell + figY;
+  for (var j = 0; j < 10; j++) bursts.push({ x: sx, y: sy, dx: Math.round(Math.cos(j * 0.63) * 3), dy: Math.round(Math.sin(j * 0.63) * 3), age: 0, bad: k.bad });
+  logs.push({ text: k.text, p: k.p, bad: k.bad });
+  if (logs.length > 7) logs.shift();
+  if (k.bad) { shields.push({ age: 0 }); SFX.buzz(); } else SFX.sq(330 + k.p * 660, 0.07, 0.035);
+}
+function drawTokens() {
+  var hasF = "filter" in g;
+  tokens.forEach(function (k) {
+    var dl = Math.hypot(headX - k.x, headY - k.y), focus = Math.max(clamp(k.age / 1.4, 0, 1) * 0.75, clamp(1 - (dl - 60) / (W * 0.45), 0, 1));
+    var a = clamp(k.age / 0.6, 0, 1);
+    g.save();
+    if (hasF) g.filter = "blur(" + ((1 - focus) * 5).toFixed(1) + "px)";
+    g.globalAlpha = a * (0.6 + 0.4 * focus);
+    g.fillStyle = rgba(COL.ink, 1); g.font = "300 " + k.size + "px 'Hanken Grotesk', sans-serif";
+    g.textBaseline = "middle";
+    g.fillText(k.text, k.x, k.y);
+    g.font = "400 11px 'IBM Plex Mono', monospace";
+    g.globalAlpha *= 0.7;
+    g.fillText("p " + k.p.toFixed(2), k.x, k.y + k.size * 0.75);
+    g.restore();
+  });
+}
+function drawBursts(dt) {
+  for (var i = bursts.length - 1; i >= 0; i--) {
+    var b = bursts[i]; b.age += dt;
+    if (b.age > 0.6) { bursts.splice(i, 1); continue; }
+    var st = Math.floor(b.age / 0.08);
+    g.fillStyle = rgba(b.bad ? COL.alert : COL.phos, 1 - b.age / 0.6);
+    g.fillRect(b.x + b.dx * st * cell * 0.6, b.y + b.dy * st * cell * 0.6, cell * 0.8, cell * 0.8);
+  }
+}
+function drawShields(dt) {
+  for (var i = shields.length - 1; i >= 0; i--) {
+    var s = shields[i]; s.age += dt;
+    if (s.age > 1) { shields.splice(i, 1); continue; }
+    var r = s.age * 14, a = 1 - s.age;
+    g.fillStyle = rgba(COL.alert, a * 0.9);
+    for (var y = 0; y < GH; y++) for (var x = 0; x < GW; x++) {
+      var d = SD[y * GW + x];
+      if (d > r && d <= r + 1) g.fillRect(figX + (x - PAD) * cell, figY + (y - PAD) * cell, cell - 1, cell * 0.72);
+    }
+  }
+}
+function drawRipples(dt) {
+  for (var i = ripples.length - 1; i >= 0; i--) {
+    var rp = ripples[i]; rp.age += dt;
+    if (rp.age > 0.8) { ripples.splice(i, 1); continue; }
+    var r = Math.floor(rp.age / 0.8 * 14) + 1, a = 1 - rp.age / 0.8;
+    g.fillStyle = rgba(COL.phos, a);
+    for (var dx = -r; dx <= r; dx++) {
+      var dy = r - Math.abs(dx);
+      g.fillRect(rp.x + dx * cell, rp.y + dy * cell, cell - 1, cell * 0.72);
+      if (dy) g.fillRect(rp.x + dx * cell, rp.y - dy * cell, cell - 1, cell * 0.72);
+    }
+  }
+}
+function drawLog(a) {
+  if (a <= 0 || !logs.length) return;
+  var fs = W < 700 ? 18 : 22, lh = fs * 1.05, cw = fs * 0.5;
+  var lines = [];
+  logs.forEach(function (l) {
+    if (l.bad) { lines.push(["> " + l.text, 0]); lines.push(["  BLOCKED, not an instruction", 1]); }
+    else { var w = l.text; while (w.length < 11) w += " "; lines.push(["> " + w + l.p.toFixed(2), 0]); }
+  });
+  lines = lines.slice(-7);
+  var wmax = 0; lines.forEach(function (l) { wmax = Math.max(wmax, l[0].length); });
+  var bw = wmax * cw + 28, bh = lines.length * lh + 22;
+  var x = figX - bw - cell * 2, y = figY + 34 * cell;
+  if (x < 16) { x = 16; y = Math.max(16, figY - bh - 20); if (W < 700) y = H * 0.27; }
+  g.save(); g.globalAlpha = a;
+  g.fillStyle = rgba(COL.dark, 0.86); g.fillRect(x, y, bw, bh);
+  g.font = fs + "px VT323, monospace"; g.textBaseline = "top";
+  lines.forEach(function (l, i) {
+    g.fillStyle = rgba(l[1] ? COL.alert : COL.phos, 1);
+    g.shadowColor = rgba(l[1] ? COL.alert : COL.phos, 0.8); g.shadowBlur = 8;
+    g.fillText(l[0], x + 14, y + 11 + i * lh);
+  });
+  g.restore();
+}
+
+/* ---------------------------------------------------------------- rails */
+var ORBS = [{ hw: 24, hh: 19, iv: 0.085, off: 0 }, { hw: 33, hh: 27, iv: 0.11, off: 40 }, { hw: 42, hh: 35, iv: 0.14, off: 90 }];
+function railPoint(o, s) {
+  var per = 2 * (o.hw * 2 + o.hh * 2), u = ((s % per) + per) % per, x, y;
+  if (u < o.hw * 2) { x = -o.hw + u; y = -o.hh; }
+  else if ((u -= o.hw * 2) < o.hh * 2) { x = o.hw; y = -o.hh + u; }
+  else if ((u -= o.hh * 2) < o.hw * 2) { x = o.hw - u; y = o.hh; }
+  else { u -= o.hw * 2; x = -o.hw; y = o.hh - u; }
+  return [headX + x * cell, headY + y * cell];
+}
+function drawRails(t, p) {
+  if (p.grid > 0) {
+    var rad = Math.max(10, p.grid * Math.max(W, H) * 0.75);
+    var gr = g.createRadialGradient(headX, headY, 0, headX, headY, rad);
+    gr.addColorStop(0, rgba(COL.dark, 0.5 * p.grid)); gr.addColorStop(0.55, rgba(COL.dark, 0.16 * p.grid)); gr.addColorStop(1, rgba(COL.dark, 0));
+    g.beginPath();
+    var step = cell * 4, x0 = figX % step, y0 = figY % step;
+    for (var x = x0; x < W; x += step) { g.moveTo(Math.round(x) + 0.5, 0); g.lineTo(Math.round(x) + 0.5, H); }
+    for (var y = y0; y < H; y += step) { g.moveTo(0, Math.round(y) + 0.5); g.lineTo(W, Math.round(y) + 0.5); }
+    g.strokeStyle = gr; g.lineWidth = 1; g.stroke();
+  }
+  if (p.orb <= 0) return;
+  var lt = Math.max(0, t - 31);
+  ORBS.forEach(function (o, i) {
+    var stepF = lt / o.iv, s0 = Math.floor(stepF), frac = sm(clamp((stepF - s0) / 0.35, 0, 1));
+    for (var k = 9; k >= 1; k--) {
+      var tp = railPoint(o, (s0 - k) * 2 + o.off), ta = (1 - k / 10) * 0.95 * p.orb;
+      g.fillStyle = rgba(COL.phos, ta); g.fillRect(tp[0] - cell * 0.4, tp[1] - cell * 0.4, cell * 0.8, cell * 0.8 * 0.72);
+      g.fillStyle = rgba(COL.dark, ta * 0.6); g.fillRect(tp[0] - cell * 0.4, tp[1] - cell * 0.4 + cell * 0.6, cell * 0.8, cell * 0.2);
+    }
+    var a = railPoint(o, s0 * 2 + o.off), b = railPoint(o, (s0 + 1) * 2 + o.off);
+    var x = a[0] + (b[0] - a[0]) * frac, y = a[1] + (b[1] - a[1]) * frac;
+    var r = cell * (5.2 + Math.sin(wallT * 1.7 + i) * 0.6);
+    var gr = g.createRadialGradient(x, y, 0, x, y, r * 2.4);
+    gr.addColorStop(0, "rgba(255,255,255," + 0.98 * p.orb + ")");
+    gr.addColorStop(0.22, "rgba(255,236,224," + 0.85 * p.orb + ")");
+    gr.addColorStop(0.5, "rgba(246,206,188," + 0.35 * p.orb + ")");
+    gr.addColorStop(1, "rgba(176,214,208,0)");
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r * 2.4, 0, Math.PI * 2); g.fill();
+  });
+}
+
+/* ------------------------------------------------------------ captions */
+function wrap(text, font, maxW) {
+  g.font = font; var words = text.split(" "), lines = [], cur = "";
+  words.forEach(function (w) { var tryL = cur ? cur + " " + w : w; if (g.measureText(tryL).width > maxW && cur) { lines.push(cur); cur = w; } else cur = tryL; });
+  if (cur) lines.push(cur); return lines;
+}
+function drawAI(cap, t, x, y, size, maxW, out) {
+  if (t < cap.aiT) return;
+  var font = "300 " + size + "px 'Hanken Grotesk', sans-serif", lines = wrap(cap.ai, font, maxW), wi = 0, hasF = "filter" in g;
+  g.font = font; g.textBaseline = "alphabetic";
+  lines.forEach(function (ln, li) {
+    var cx = x;
+    ln.split(" ").forEach(function (w) {
+      var p = clamp((t - cap.aiT - wi * 0.13) / 0.7, 0, 1), e = sm(p); wi++;
+      if (p > 0) {
+        g.save();
+        if (hasF && e < 1) g.filter = "blur(" + ((1 - e) * 10).toFixed(1) + "px)";
+        g.globalAlpha = e * out; g.fillStyle = rgba(COL.ink, 1);
+        g.fillText(w, cx, y + li * size * 1.08 + (1 - e) * 10);
+        g.restore();
+      }
+      cx += g.measureText(w + " ").width;
+    });
+  });
+}
+function typed(text, t0, t, cps) { return text.slice(0, clamp(Math.floor((t - t0) * cps), 0, text.length)); }
+function drawTerm(text, x, y, fs, out, cursor) {
+  if (!text && !cursor) return;
+  g.save(); g.font = fs + "px VT323, monospace"; g.textBaseline = "middle";
+  var w = g.measureText(text + (cursor ? "_" : "")).width;
+  g.globalAlpha = out;
+  g.fillStyle = rgba(COL.dark, 0.9); g.fillRect(x, y - fs * 0.62, w + fs * 0.8, fs * 1.24);
+  g.fillStyle = rgba(COL.phos, 1); g.shadowColor = rgba(COL.phos, 0.85); g.shadowBlur = 10;
+  g.fillText(text + (cursor && Math.floor(wallT * 2.2) % 2 === 0 ? "_" : ""), x + fs * 0.4, y + 1);
+  g.restore();
+  return w + fs * 0.8;
+}
+function sceneOf(t) { for (var i = 0; i < SCENES.length; i++) if (t < SCENES[i].b) return i; return SCENES.length - 1; }
+function drawCaptions(t) {
+  var si = sceneOf(t), cap = CAPS[si], narrow = W < 700;
+  var out = 1 - seg(t, cap.end - 0.7, cap.end - 0.1);
+  var size = Math.round(clamp(W * 0.042, 30, 66)), ax = Math.max(20, W * 0.06), ay = Math.max(size + 40, H * 0.17);
+  drawAI(cap, t, ax, ay, size, narrow ? W - 40 : Math.min(W * 0.42, figX - ax - 20 > 280 ? figX - ax - 20 : W * 0.42), out);
+  if (t >= cap.meT) {
+    var fs = narrow ? 24 : 30, txt = typed(cap.me, cap.meT, t, 18);
+    var mx = figX + 62 * cell, my = figY + 16 * cell;
+    g.font = fs + "px VT323, monospace";
+    var need = g.measureText(cap.me + "_").width + fs;
+    if (mx + need > W - 16) { mx = figX + 8 * cell - need; }
+    if (mx < 16 || narrow) { mx = Math.max(16, headX - need / 2); my = Math.max(fs, figY - fs * 1.4); }
+    drawTerm(txt, mx, my, fs, out, true);
+  }
+}
+function drawHUD(t, p) {
+  g.save(); g.font = "400 11px 'IBM Plex Mono', monospace"; g.textBaseline = "top"; g.textAlign = "right";
+  g.fillStyle = rgba(COL.ink, 0.72);
+  var m = Math.floor(t), s = (m < 10 ? "0" : "") + m;
+  var lines = [SCENES[sceneOf(t)].name.toUpperCase() + "   00:" + s + " / 00:" + TOTAL];
+  if (p.noise > 0.003) lines.push("denoising step " + p.step + " / 1000");
+  if (p.bridge > 0.02 && p.bridge < 0.999) lines.push("ordered dither, 4x4 Bayer");
+  lines.forEach(function (l, i) { g.fillText(l, W - 20, 20 + i * 17); });
+  g.restore();
+}
+function drawTitle(t, a) {
+  if (a <= 0) return;
+  var narrow = W < 700, x = Math.max(20, W * 0.06), avail = narrow ? W - 2 * x : figX - 15 * cell - x;
+  var big = Math.round(clamp(Math.min(W * 0.085, avail / 7.2), 40, 150));
+  var y = narrow ? Math.max(big + 30, H * 0.14) : H * 0.34;
+  var l1 = typed("A digital guy", 45.5, t, 16);
+  g.save(); g.globalAlpha = a;
+  drawTerm(l1, x - big * 0.1, y, big, 1, t < 47.5);
+  g.restore();
+  var cap = { ai: "in an AI world.", aiT: 46.4 };
+  drawAI(cap, t, x, y + big * 1.3, Math.round(big * 0.8), narrow ? W - x - 16 : avail + 40, a);
+  if (t > 47.6) {
+    g.save(); g.globalAlpha = a * seg(t, 47.6, 48.3); g.font = "400 " + (narrow ? 12 : 14) + "px 'IBM Plex Mono', monospace"; g.fillStyle = rgba(COL.ink, 0.85);
+    g.fillText("Omar. Agadir, Morocco.", x, y + big * 1.3 + big * 0.8 * 1.05 + 10);
+    g.restore();
+  }
+}
+
+/* ---------------------------------------------------------------- sound */
+var SFX = (function () {
+  var A = { on: false };
+  function init() {
+    if (A.c) return true;
+    var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
+    var c = A.c = new AC();
+    A.m = c.createGain(); A.m.gain.value = 0;
+    var comp = c.createDynamicsCompressor(); A.m.connect(comp); comp.connect(c.destination);
+    var len = c.sampleRate * 2.6, ir = c.createBuffer(2, len, c.sampleRate);
+    for (var ch = 0; ch < 2; ch++) { var d = ir.getChannelData(ch); for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+    A.v = c.createConvolver(); A.v.buffer = ir; var wet = c.createGain(); wet.gain.value = 0.5; A.v.connect(wet); wet.connect(A.m);
+    var nb = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), nd = nb.getChannelData(0);
+    for (i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    A.nb = nb;
+    /* the AI world: a continuous pad */
+    A.pad = c.createGain(); A.pad.gain.value = 0;
+    var lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1100;
+    var lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 0.05; lg.gain.value = 400; lfo.connect(lg); lg.connect(lp.frequency); lfo.start();
+    [[146.83, 0], [220, 4], [277.18, -5], [329.63, 3], [369.99, -3], [440, 6]].forEach(function (v, k) {
+      var o = c.createOscillator(); o.type = k % 2 ? "sine" : "triangle"; o.frequency.value = v[0]; o.detune.value = v[1];
+      var og = c.createGain(); og.gain.value = 0.05;
+      var tr = c.createOscillator(), tg = c.createGain(); tr.frequency.value = 0.07 + k * 0.03; tg.gain.value = 0.03; tr.connect(tg); tg.connect(og.gain); tr.start();
+      o.connect(og); og.connect(lp); o.start();
+    });
+    lp.connect(A.pad); A.pad.connect(A.m); var pw = c.createGain(); pw.gain.value = 0.7; A.pad.connect(pw); pw.connect(A.v);
+    /* diffusion noise bed */
+    A.hiss = c.createGain(); A.hiss.gain.value = 0;
+    var ns = c.createBufferSource(); ns.buffer = nb; ns.loop = true;
+    var bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 2400; bp.Q.value = 0.4;
+    ns.connect(bp); bp.connect(A.hiss); A.hiss.connect(A.m); ns.start();
+    return true;
+  }
+  function live() { return A.on && A.c && A.c.state === "running"; }
+  function env(gn, t, a, v, d) { gn.gain.setValueAtTime(0.0001, t); gn.gain.linearRampToValueAtTime(v, t + a); gn.gain.exponentialRampToValueAtTime(0.0001, t + d); }
+  function sq(f, d, v, when) {
+    if (!live()) return; var c = A.c, t = when || c.currentTime, o = c.createOscillator(), gn = c.createGain(), lp = c.createBiquadFilter();
+    o.type = "square"; o.frequency.value = f; lp.type = "lowpass"; lp.frequency.value = 3200;
+    o.connect(lp); lp.connect(gn); gn.connect(A.m); var s = c.createGain(); s.gain.value = 0.15; gn.connect(s); s.connect(A.v);
+    env(gn, t, 0.003, v || 0.04, d || 0.08); o.start(t); o.stop(t + (d || 0.08) + 0.05);
+  }
+  function bell(f, v, when) {
+    if (!live()) return; var c = A.c, t = when || c.currentTime;
+    [1, 2.0, 3.01].forEach(function (m, k) {
+      var o = c.createOscillator(), gn = c.createGain(); o.type = "sine"; o.frequency.value = f * m;
+      o.connect(gn); gn.connect(A.m); var s = c.createGain(); s.gain.value = 0.9; gn.connect(s); s.connect(A.v);
+      env(gn, t, 0.02, (v || 0.04) / (k + 1), 2.4 - k * 0.6); o.start(t); o.stop(t + 2.5);
+    });
+  }
+  function buzz() {
+    if (!live()) return; var c = A.c, t = c.currentTime;
+    [55, 110.6].forEach(function (f) { var o = c.createOscillator(), gn = c.createGain(); o.type = f < 100 ? "sawtooth" : "square"; o.frequency.value = f; o.connect(gn); gn.connect(A.m); env(gn, t, 0.005, 0.09, 0.55); o.start(t); o.stop(t + 0.6); });
+    for (var i = 0; i < 4; i++) sq(1760, 0.04, 0.03, t + i * 0.09);
+  }
+  function sweep(up) {
+    if (!live()) return; var c = A.c, t = c.currentTime, s = c.createBufferSource(), bp = c.createBiquadFilter(), gn = c.createGain();
+    s.buffer = A.nb; bp.type = "bandpass"; bp.Q.value = 1.2; bp.frequency.setValueAtTime(up ? 300 : 4000, t); bp.frequency.exponentialRampToValueAtTime(up ? 5000 : 200, t + 1.4);
+    s.connect(bp); bp.connect(gn); gn.connect(A.m); env(gn, t, 0.3, 0.12, 1.6); s.start(t); s.stop(t + 1.7);
+  }
+  function chord(when) {
+    if (!live()) return; var t = when || A.c.currentTime;
+    [293.66, 369.99, 440, 554.37, 659.26].forEach(function (f, i) { bell(f, 0.035, t + i * 0.05); sq(f * 2, 0.07, 0.025, t + 0.6 + i * 0.09); });
+  }
+  function setOn(on) {
+    if (on && !init()) return false;
+    A.on = on;
+    if (!A.c) return true;
+    if (on) A.c.resume().then(function () { A.m.gain.setTargetAtTime(0.9, A.c.currentTime, 0.4); });
+    else A.m.gain.setTargetAtTime(0, A.c.currentTime, 0.1);
+    return true;
+  }
+  function frame(p) {
+    if (!live()) return; var c = A.c;
+    A.pad.gain.setTargetAtTime(0.55 * (1 - p.noise) + 0.05, c.currentTime, 0.2);
+    A.hiss.gain.setTargetAtTime(0.09 * p.noise, c.currentTime, 0.1);
+  }
+  return { sq: sq, bell: bell, buzz: buzz, sweep: sweep, chord: chord, setOn: setOn, frame: frame, live: live, ctx: function () { return A.c; } };
+})();
+var PENTA = [293.66, 329.63, 369.99, 440, 493.88, 587.33, 659.26, 739.99];
+
+/* --------------------------------------------------------------- events */
+function events(a, b) {
+  function cross(x) { return a < x && x <= b; }
+  if (cross(0.8)) SFX.sweep(false);
+  MOSAIC.forEach(function (m, i) { if (cross(m[0])) SFX.sq(220 * Math.pow(1.26, i), 0.09, 0.05); });
+  CAPS.forEach(function (c) {
+    c.ai.split(" ").forEach(function (w, i) { if (cross(c.aiT + i * 0.13)) SFX.bell(PENTA[(i * 2 + 1) % PENTA.length], 0.028); });
+    for (var i = 1; i <= c.me.length; i++) if (cross(c.meT + i / 18) && c.me[i - 1] !== " ") { SFX.sq(i % 2 ? 1180 : 1400, 0.025, 0.018); break; }
+  });
+  "A digital guy".split("").forEach(function (ch, i) { if (cross(45.5 + (i + 1) / 16) && ch !== " ") SFX.sq(990, 0.03, 0.02); });
+  if (cross(30.6)) SFX.sweep(true);
+  if (cross(40.8)) SFX.chord();
+  if (cross(46.4)) SFX.chord();
+  if (cross(50.7)) SFX.sweep(true);
+  if (b >= 31 && b < 40) ORBS.forEach(function (o, i) {
+    var per = 2 * (o.hw * 2 + o.hh * 2), sa = Math.floor((a - 31) / o.iv) * 2 + o.off, sb = Math.floor((b - 31) / o.iv) * 2 + o.off;
+    if (sb > sa && a >= 31) { var corners = [0, o.hw * 2, o.hw * 2 + o.hh * 2, o.hw * 4 + o.hh * 2]; corners.forEach(function (cn) { for (var s = sa + 1; s <= sb; s++) if (((s % per) + per) % per === cn) SFX.sq([587.33, 739.99, 880][i], 0.06, 0.022); }); }
+  });
+  if (b >= 19.6 && b < 28.8 && b - lastSpawn > 0.34) { spawnToken(false); lastSpawn = b; }
+  if (cross(25.0)) spawnToken(true);
+}
+
+/* ------------------------------------------------------------- main loop */
+var t = 0, wallT = 0, playing = !reduce, lens = { x: -999, y: -999, r: 0, tr: 0 }, lastLive = -1;
+if (reduce) t = 47.4;
+function render(dt) {
+  var p = params(t);
+  place(p.shift);
+  lens.r += (lens.tr - lens.r) * Math.min(1, dt * 10 || 0.2);
+  drawGL(t, p);
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.clearRect(0, 0, W, H);
+  drawRails(t, p);
+  if (playing || CAPTURE) stepParticles(dt * p.part > 0 ? dt : 0);
+  drawParticles(p.part);
+  if (p.k > 0) {
+    var f = figure(p.k), glowA = 0.55 + p.bridge * 0.35;
+    g.save(); g.globalCompositeOperation = "screen"; g.globalAlpha = glowA; g.drawImage(f.glow, figX, figY, figW, figH); g.restore();
+    var gt = (t * 1000) % 2700, glitch = t > 6 && gt < 110;
+    if (glitch) {
+      var bands = 8, bh = Math.ceil(R / bands);
+      for (var bi = 0; bi < bands; bi++) {
+        var off = [0, 0, -2, 0, 3, 0, 1, -1][Math.floor(hash(Math.floor(t * 20) + bi) * 8)] * cell;
+        var sy = bi * bh * cell, sh_ = Math.min(bh * cell, figH - sy);
+        g.drawImage(f.img, 0, sy * DPR, figW * DPR, sh_ * DPR, figX + off, figY + sy, figW, sh_);
+      }
+    } else g.drawImage(f.img, figX, figY, figW, figH);
+  }
+  drawShields(dt);
+  if (playing || CAPTURE) stepTokens(dt, t);
+  drawTokens();
+  drawBursts(dt);
+  drawRipples(dt);
+  drawLog(p.log);
+  if (p.title <= 0.01) drawCaptions(t);
+  drawTitle(t, p.title);
+  drawHUD(t, p);
+  SFX.frame(p);
+  var si = sceneOf(t);
+  if (si !== lastLive && !CAPTURE) { lastLive = si; document.getElementById("live").textContent = CAPS[si].ai + " " + CAPS[si].me.replace("> ", ""); }
+  updateChapters();
+}
+function advance(dt) {
+  var prev = t; t += dt; wallT += dt;
+  if (t >= TOTAL) { t -= TOTAL; resetTransient(); events(-0.001, t); return; }
+  events(prev, t);
+}
+var last = 0;
+function tick(now) {
+  var dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016; last = now;
+  if (playing) advance(dt); else wallT += dt * 0.25;
+  render(playing ? dt : 0);
+  requestAnimationFrame(tick);
+}
+
+/* ------------------------------------------------------------- controls */
+var chapEl = document.getElementById("chap"), chapBtns = [];
+SCENES.forEach(function (s, i) {
+  var b = document.createElement("button"); b.type = "button"; b.style.setProperty("--w", s.b - s.a);
+  b.innerHTML = s.name + "<i><b></b></i>"; b.setAttribute("aria-label", "Scene " + (i + 1) + ": " + s.name);
+  b.addEventListener("click", function () { seek(s.a + 0.01); });
+  chapEl.appendChild(b); chapBtns.push(b);
+});
+function updateChapters() {
+  chapBtns.forEach(function (b, i) {
+    var s = SCENES[i], f = clamp((t - s.a) / (s.b - s.a), 0, 1);
+    b.querySelector("b").style.width = (f * 100) + "%";
+    b.classList.toggle("on", t >= s.a && t < s.b);
+  });
+}
+function seek(x) { t = x; resetTransient(); lastSpawn = t; SFX.sq(660, 0.05, 0.03); if (!playing) render(0); }
+var playBtn = document.getElementById("play");
+function setPlay(on) { playing = on; playBtn.textContent = on ? "Pause" : "Play"; playBtn.setAttribute("aria-label", on ? "Pause" : "Play"); }
+playBtn.addEventListener("click", function () { setPlay(!playing); });
+setPlay(playing);
+var sndBtn = document.getElementById("snd");
+sndBtn.addEventListener("click", function () {
+  var on = sndBtn.getAttribute("aria-pressed") !== "true";
+  if (SFX.setOn(on)) { sndBtn.setAttribute("aria-pressed", String(on)); sndBtn.textContent = on ? "Sound on" : "Sound"; if (on) SFX.chord(); }
+});
+document.querySelectorAll(".sw button").forEach(function (b) {
+  b.addEventListener("click", function () {
+    if (b.dataset.ph === "amber") root.setAttribute("data-phosphor", "amber"); else root.removeAttribute("data-phosphor");
+    document.querySelectorAll(".sw button").forEach(function (o) { o.setAttribute("aria-pressed", String(o === b)); });
+    readCols(); figCache = {}; SFX.sq(b.dataset.ph === "amber" ? 440 : 660, 0.06, 0.04);
+    try { localStorage.setItem("phosphor", b.dataset.ph); } catch (e) {}
+  });
+});
+document.getElementById("fs").addEventListener("click", function () {
+  var el = document.documentElement;
+  if (document.fullscreenElement) { document.exitFullscreen && document.exitFullscreen().catch(function () {}); }
+  else if (el.requestFullscreen) el.requestFullscreen().catch(function () {});
+});
+document.addEventListener("keydown", function (e) {
+  if (e.key === " " && e.target === document.body) { e.preventDefault(); setPlay(!playing); }
+  if (/^[1-5]$/.test(e.key)) seek(SCENES[+e.key - 1].a + 0.01);
+});
+var ctrl = document.getElementById("ctrl"), idleT;
+function wake() { ctrl.classList.remove("idle"); clearTimeout(idleT); idleT = setTimeout(function () { ctrl.classList.add("idle"); }, 3200); }
+addEventListener("pointermove", wake); wake();
+fx.addEventListener("pointermove", function (e) { lens.x = e.clientX; lens.y = e.clientY; lens.tr = Math.min(170, Math.max(110, W * 0.1)); });
+fx.addEventListener("pointerleave", function () { lens.tr = 0; });
+fx.addEventListener("pointerdown", function (e) {
+  lens.x = e.clientX; lens.y = e.clientY; lens.tr = Math.min(170, Math.max(110, W * 0.1));
+  var sx = figX + Math.round((e.clientX - figX) / cell) * cell, sy = figY + Math.round((e.clientY - figY) / cell) * cell;
+  ripples.push({ x: sx, y: sy, age: 0 });
+  SFX.sq(PENTA[Math.floor(clamp(1 - e.clientY / H, 0, 0.99) * PENTA.length)] * 2, 0.12, 0.05);
+});
+fx.addEventListener("pointerup", function (e) { if (e.pointerType !== "mouse") lens.tr = 0; });
+addEventListener("resize", function () { layout(); if (!playing) render(0); });
+
+/* ---------------------------------------------------------------- start */
+try { if (localStorage.getItem("phosphor") === "amber") { root.setAttribute("data-phosphor", "amber"); document.querySelectorAll(".sw button").forEach(function (o) { o.setAttribute("aria-pressed", String(o.dataset.ph === "amber")); }); } } catch (e) {}
+readCols(); layout(); initGL();
+var fontsReady = Promise.all(["30px VT323", "300 30px 'Hanken Grotesk'", "11px 'IBM Plex Mono'"].map(function (f) { return document.fonts ? document.fonts.load(f).catch(function () {}) : null; }));
+if (CAPTURE) {
+  document.getElementById("ctrl").style.display = "none";
+  window.__ready = fontsReady.then(function () { figCache = {}; return true; });
+  window.__frame = function (dt) { advance(dt); render(dt); };
+  window.__seek = function (x) { t = x; resetTransient(); };
+} else {
+  fontsReady.then(function () { figCache = {}; });
+  requestAnimationFrame(tick);
+}
+})();
+</script>
